@@ -18,10 +18,11 @@ type Config struct {
 }
 
 func New(parent *pkg.Config) *Config {
-	var c Config
 	path := []string{parent.Command.Name, ID}
-	c.Config = parent
-	c.Flags = ff.NewFlagSet(strings.Join(path, " ")).SetParent(parent.Flags)
+	c := Config{
+		Config: parent,
+		Flags:  ff.NewFlagSet(strings.Join(path, " ")).SetParent(parent.Flags),
+	}
 
 	c.Command = &ff.Command{
 		Name:      ID,
@@ -33,6 +34,7 @@ func New(parent *pkg.Config) *Config {
 			return err
 		},
 	}
+
 	c.Config.Command.Subcommands = append(c.Config.Command.Subcommands, c.Command)
 	return &c
 }
