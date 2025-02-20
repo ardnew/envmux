@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/ardnew/groot/pkg"
+	"github.com/ardnew/groot/pkg/model"
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
 )
@@ -31,8 +32,8 @@ func resultHelp(help string) pkg.Option[Result] {
 	}
 }
 
-func MakeResult(cfg pkg.Config, err error) Result {
-	resultUsage := resultHelp(ffhelp.Command(cfg.Command).String())
+func MakeResult(mod model.Command, err error) Result {
+	resultUsage := resultHelp(ffhelp.Command(mod.Config().Command).String())
 	switch {
 	case err == nil:
 		return ResultOK
