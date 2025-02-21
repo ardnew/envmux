@@ -9,8 +9,9 @@ import (
 
 	"github.com/ardnew/groot/pkg"
 	"github.com/ardnew/groot/pkg/model"
-	"github.com/ardnew/groot/pkg/model/env"
-	"github.com/ardnew/groot/pkg/model/fs"
+	"github.com/ardnew/groot/pkg/model/cmd/env"
+	"github.com/ardnew/groot/pkg/model/cmd/fs"
+	"github.com/ardnew/groot/pkg/model/config"
 	"github.com/peterbourgon/ff/v4"
 )
 
@@ -21,10 +22,14 @@ const (
 	longHelp  = ID + ` is a tool for managing virtual environments.`
 )
 
-const (
-	fileFlag = "config"
-)
+type defaultFlag[T any] struct {
+	flag  string
+	value T
+}
 
+var defaultConfigFile = defaultFlag[string]{flag: "config", value: "config"}
+
+// Command represents the root command for the application.
 type Command struct {
 	model.Command
 
@@ -37,14 +42,22 @@ type Command struct {
 	Verbose bool
 }
 
-func (Command) Name() string               { return ID }
-func (Command) Syntax() string             { return syntax }
+// Name returns the name of the command.
+func (Command) Name() string { return ID }
+
+// Syntax returns the syntax of the command.
+func (Command) Syntax() string { return syntax }
+
+// Help returns the short and long help descriptions of the command.
 func (Command) Help() (short, long string) { return shortHelp, longHelp }
+
+// Exec executes the command with the given context and arguments.
 func (Command) Exec(context.Context, []string) error {
 	// _, err := fmt.Fprintf(c.Stdout, "[%s] arg=%+v\n", ID, arg)
 	return nil
 }
 
+// Run parses and runs the command with the given context.
 func (c Command) Run(ctx context.Context) error {
 	if err := c.Command.Parse(c.Args, getParseOptions(c.ID)...); err != nil {
 		return err
@@ -55,54 +68,32 @@ func (c Command) Run(ctx context.Context) error {
 	return nil
 }
 
-func Make(opts ...pkg.Option[Command]) (cfg Command) {
-	return pkg.WithOptions(cfg,
-		append(
-			[]pkg.Option[Command]{WithDefaults()},
-			opts...,
-		)...,
-	)
-}
-
-func WithDefaults() pkg.Option[Command] {
-	return func(c Command) Command {
-		c.ID = filepath.Base(os.Args[0])
-		c.Args = os.Args[1:]
-
-		c.Stdout = os.Stdout
-		c.Stderr = os.Stderr
-
-		c.File = filepath.Join(getConfigDir(c.ID), "config")
-
-		c.Verbose = false
-
-		return pkg.WithOptions(c,
-			WithModel(
-				model.WithInterface(c),
-				model.WithConfig(
-					func(n model.Config) model.Config {
-						n.BoolVar(&c.Verbose, 'v', "verbose", "log verbose output")
-						n.StringVar(&c.File, 'c', "config", c.File, "path to configuration file")
-						return n
-					},
-				),
-			),
-			func(g Command) Command {
-				_ = env.Make(env.WithModel(model.WithParent(&g.Command)))
-				_ = fs.Make(fs.WithModel(model.WithParent(&g.Command)))
-				return g
-			},
-		)
+// Make creates a new Command with the given options.
+func Make(opts ...pkg.Option[Command]) Command {
+	withConfig := func(cfg config.Command) pkg.Option[Command] {
+		return func(c Command) Command {
+			// Configure default options
+			c.ID = getConfigID()
+			c.Args = os.Args[1:]
+			c.Stdout = os.Stdout
+			c.Stderr = os.Stderr
+			c.File = filepath.Join(getConfigDir(), defaultConfigFile.value)
+			c.Verbose = false
+			// Configure command-line flags
+			cfg.BoolVar(&c.Verbose, 'v', "verbose", "log verbose output")
+			cfg.StringVar(&c.File, 'c', defaultConfigFile.flag, c.File, "path to configuration file")
+			// Install command and subcommands
+			c.Command = pkg.Make(model.WithConfig(cfg))
+			_ = env.Make(env.WithParent(&c.Command))
+			_ = fs.Make(fs.WithParent(&c.Command))
+			return c
+		}
 	}
+	// Ensure the [config.Command] is initialized before applying any options.
+	return pkg.WithOptions(pkg.Make(withConfig(config.Make[Command]())), opts...)
 }
 
-func WithModel(opts ...pkg.Option[model.Command]) pkg.Option[Command] {
-	return func(c Command) Command {
-		c.Command = pkg.WithOptions(c.Command, opts...)
-		return c
-	}
-}
-
+// WithArgs sets the arguments for the Command.
 func WithArgs(args ...string) pkg.Option[Command] {
 	return func(c Command) Command {
 		if len(args) > 0 {
@@ -113,6 +104,7 @@ func WithArgs(args ...string) pkg.Option[Command] {
 	}
 }
 
+// WithOutput sets the output writers for the Command.
 func WithOutput(stdout, stderr io.Writer) pkg.Option[Command] {
 	return func(c Command) Command {
 		c.Stdout = stdout
@@ -121,6 +113,7 @@ func WithOutput(stdout, stderr io.Writer) pkg.Option[Command] {
 	}
 }
 
+// WithFile sets the configuration file for the Command.
 func WithFile(file string) pkg.Option[Command] {
 	return func(c Command) Command {
 		c.File = file
@@ -128,6 +121,7 @@ func WithFile(file string) pkg.Option[Command] {
 	}
 }
 
+// WithVerbose sets the verbose flag for the Command.
 func WithVerbose(verbose bool) pkg.Option[Command] {
 	return func(c Command) Command {
 		c.Verbose = verbose
@@ -135,15 +129,20 @@ func WithVerbose(verbose bool) pkg.Option[Command] {
 	}
 }
 
-// func getConfigID() string {
-// 	id := os.Args[0]
-// 	if exe, err := os.Executable(); err == nil {
-// 		id = exe
-// 	}
-// 	return filepath.Base(id)
-// }
+// getConfigID returns the ID of the configuration.
+func getConfigID() string {
+	id := os.Args[0]
+	if exe, err := os.Executable(); err == nil {
+		id = exe
+	}
+	if strings.Contains(id, "__debug_bin") {
+		id = ID
+	}
+	return filepath.Base(id)
+}
 
-func getConfigDir(id string) string {
+// getConfigDir returns the configuration directory.
+func getConfigDir(relPath ...string) string {
 	root, ok := os.LookupEnv("XDG_CONFIG_HOME")
 	if !ok {
 		if root, ok = os.LookupEnv("HOME"); ok {
@@ -156,14 +155,22 @@ func getConfigDir(id string) string {
 			}
 		}
 	}
-	return filepath.Join(root, id)
+	path := getConfigID()
+	if len(relPath) > 0 {
+		path = filepath.Join(relPath...)
+	}
+	return filepath.Join(root, path)
 }
 
-func getParseOptions(id string) []ff.Option {
+// getParseOptions returns the options for parsing the command-line arguments.
+func getParseOptions(configFile string, envVarPrefix ...string) []ff.Option {
+	if len(envVarPrefix) == 0 {
+		envVarPrefix = []string{getConfigID()}
+	}
 	return []ff.Option{
-		ff.WithConfigFileFlag(fileFlag),
+		ff.WithConfigFileFlag(configFile),
 		ff.WithConfigFileParser(ff.PlainParser),
 		ff.WithConfigAllowMissingFile(),
-		ff.WithEnvVarPrefix(strings.ToUpper(id)),
+		ff.WithEnvVarPrefix(pkg.FormatEnvVar(envVarPrefix...)),
 	}
 }

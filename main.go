@@ -6,6 +6,7 @@ import (
 	"github.com/ardnew/groot/cli"
 )
 
+// main is the entry point for the groot application.
 func main() {
 	result := cli.Run()
 

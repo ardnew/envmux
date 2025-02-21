@@ -10,9 +10,7 @@
       "request": "launch",
       "mode": "auto",
       "program": ".",
-      "env": {
-        "override_exe_name": "groot"
-      },
+      "env": {},
       "args": [],
       "cwd": "${workspaceFolder}"
     }

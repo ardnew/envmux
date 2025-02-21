@@ -9,14 +9,17 @@ import (
 	"github.com/peterbourgon/ff/v4/ffhelp"
 )
 
+// Result represents the result of executing a command.
 type Result struct {
 	Err  error
 	Help string
 	Code int
 }
 
+// ResultOK is the default successful result.
 var ResultOK = Result{}
 
+// resultErr sets the error and code for the Result.
 func resultErr(err error, code int) pkg.Option[Result] {
 	return func(r Result) Result {
 		r.Err = err
@@ -25,6 +28,7 @@ func resultErr(err error, code int) pkg.Option[Result] {
 	}
 }
 
+// resultHelp sets the help message for the Result.
 func resultHelp(help string) pkg.Option[Result] {
 	return func(r Result) Result {
 		r.Help = help
@@ -32,6 +36,7 @@ func resultHelp(help string) pkg.Option[Result] {
 	}
 }
 
+// MakeResult creates a Result based on the given command and error.
 func MakeResult(mod model.Command, err error) Result {
 	resultUsage := resultHelp(ffhelp.Command(mod.Config().Command).String())
 	switch {
