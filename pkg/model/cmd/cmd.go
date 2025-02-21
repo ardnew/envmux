@@ -27,6 +27,7 @@ type defaultFlag[T any] struct {
 	value T
 }
 
+//nolint:gochecknoglobals
 var defaultConfigFile = defaultFlag[string]{flag: "config", value: "config"}
 
 // Command represents the root command for the application.
