@@ -7,12 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/peterbourgon/ff/v4"
+
 	"github.com/ardnew/groot/pkg"
 	"github.com/ardnew/groot/pkg/model"
 	"github.com/ardnew/groot/pkg/model/cmd/env"
 	"github.com/ardnew/groot/pkg/model/cmd/fs"
 	"github.com/ardnew/groot/pkg/model/spec"
-	"github.com/peterbourgon/ff/v4"
 )
 
 const (
@@ -66,7 +67,7 @@ func (c Command) Run(ctx context.Context) error {
 
 // Make creates a new Command with the given options.
 func Make(opts ...pkg.Option[Command]) Command {
-	withSpec := func(com spec.Common) pkg.Option[Command] {
+	withSpec := func(cs spec.Common) pkg.Option[Command] {
 		return func(c Command) Command {
 			// Configure default options
 			c.ID = getConfigID()
@@ -76,10 +77,10 @@ func Make(opts ...pkg.Option[Command]) Command {
 			c.File = filepath.Join(getConfigDir(), defaultConfigFile.value)
 			c.Verbose = false
 			// Configure command-line flags
-			com.BoolVar(&c.Verbose, 'v', "verbose", "log verbose output")
-			com.StringVar(&c.File, 'c', defaultConfigFile.flag, c.File, "path to configuration file")
+			cs.BoolVar(&c.Verbose, 'v', "verbose", "log verbose output")
+			cs.StringVar(&c.File, 'c', defaultConfigFile.flag, c.File, "path to configuration file")
 			// Install command and subcommands
-			c.Command = pkg.Make(model.WithSpec(com))
+			c.Command = pkg.Make(model.WithSpec(cs))
 			_ = env.Make(env.WithParent(&c.Command))
 			_ = fs.Make(fs.WithParent(&c.Command))
 			return c

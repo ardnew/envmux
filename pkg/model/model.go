@@ -3,32 +3,33 @@ package model
 import (
 	"context"
 
+	"github.com/peterbourgon/ff/v4"
+
 	"github.com/ardnew/groot/pkg"
 	"github.com/ardnew/groot/pkg/model/spec"
-	"github.com/peterbourgon/ff/v4"
 )
 
 // Command represents the context and configuration of a command.
 // It is not used as a command itself but as a container for actual commands.
 // The types of actual commands are composed of this type via embedding.
 type Command struct {
-	command spec.Common
-	parent  *Command
+	spec   spec.Common
+	parent *Command
 }
 
 // Parse parses the command-line arguments.
 func (c Command) Parse(args []string, opts ...ff.Option) error {
-	return c.command.Command.Parse(args, opts...)
+	return c.spec.Command.Parse(args, opts...)
 }
 
 // Run executes the command with the given context.
-func (c Command) Run(ctx context.Context) error { return c.command.Run(ctx) }
+func (c Command) Run(ctx context.Context) error { return c.spec.Run(ctx) }
 
 // IsZero checks if the Command is uninitialized.
-func (c Command) IsZero() bool { return c.command.IsZero() && c.parent == nil }
+func (c Command) IsZero() bool { return c.spec.IsZero() && c.parent == nil }
 
-// Config returns the configuration of the Command.
-func (c Command) Config() spec.Common { return c.command }
+// Spec returns the Command specification.
+func (c Command) Spec() spec.Common { return c.spec }
 
 // Parent returns the parent Command.
 func (c Command) Parent() Command {
@@ -38,10 +39,10 @@ func (c Command) Parent() Command {
 	return Command{}
 }
 
-// WithSpec sets the common fields of the Command.
-func WithSpec(com spec.Common) pkg.Option[Command] {
+// WithSpec sets the common fields specifying the Command.
+func WithSpec(cs spec.Common) pkg.Option[Command] {
 	return func(cmd Command) Command {
-		cmd.command = com
+		cmd.spec = cs
 		return cmd
 	}
 }
@@ -50,7 +51,7 @@ func WithSpec(com spec.Common) pkg.Option[Command] {
 func WithParent(ptr *Command) pkg.Option[Command] {
 	return func(cmd Command) Command {
 		if ptr != nil {
-			p, c := ptr.command, cmd.command
+			p, c := ptr.spec, cmd.spec
 			if p.Command != nil && c.Command != nil {
 				p.Subcommands = append(p.Subcommands, c.Command)
 			}

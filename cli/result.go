@@ -3,10 +3,11 @@ package cli
 import (
 	"errors"
 
-	"github.com/ardnew/groot/pkg"
-	"github.com/ardnew/groot/pkg/model"
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
+
+	"github.com/ardnew/groot/pkg"
+	"github.com/ardnew/groot/pkg/model"
 )
 
 // Result represents the result of executing a command.
@@ -38,7 +39,7 @@ func resultHelp(help string) pkg.Option[Result] {
 
 // MakeResult creates a Result based on the given command and error.
 func MakeResult(mod model.Command, err error) Result {
-	resultUsage := resultHelp(ffhelp.Command(mod.Config().Command).String())
+	resultUsage := resultHelp(ffhelp.Command(mod.Spec().Command).String())
 	switch {
 	case err == nil:
 		return ResultOK

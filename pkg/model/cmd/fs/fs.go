@@ -32,12 +32,12 @@ func (Command) Exec(context.Context, []string) error {
 
 // Make creates a new fs Command with the given options.
 func Make(opts ...pkg.Option[Command]) Command {
-	withSpec := func(com spec.Common) pkg.Option[Command] {
+	withSpec := func(cs spec.Common) pkg.Option[Command] {
 		return func(c Command) Command {
 			// Configure default options
 			// Configure command-line flags
 			// Install command and subcommands
-			c.Command = pkg.Make(model.WithSpec(com))
+			c.Command = pkg.Make(model.WithSpec(cs))
 			_ = test.Make(test.WithParent(&c.Command))
 			return c
 		}
