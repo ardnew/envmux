@@ -11,7 +11,7 @@ import (
 	"github.com/ardnew/groot/pkg/model"
 	"github.com/ardnew/groot/pkg/model/cmd/env"
 	"github.com/ardnew/groot/pkg/model/cmd/fs"
-	"github.com/ardnew/groot/pkg/model/config"
+	"github.com/ardnew/groot/pkg/model/spec"
 	"github.com/peterbourgon/ff/v4"
 )
 
@@ -43,13 +43,8 @@ type Command struct {
 	Verbose bool
 }
 
-// Name returns the name of the command.
-func (Command) Name() string { return ID }
-
-// Syntax returns the syntax of the command.
-func (Command) Syntax() string { return syntax }
-
-// Help returns the short and long help descriptions of the command.
+func (Command) Name() string               { return ID }
+func (Command) Syntax() string             { return syntax }
 func (Command) Help() (short, long string) { return shortHelp, longHelp }
 
 // Exec executes the command with the given context and arguments.
@@ -71,7 +66,7 @@ func (c Command) Run(ctx context.Context) error {
 
 // Make creates a new Command with the given options.
 func Make(opts ...pkg.Option[Command]) Command {
-	withConfig := func(cfg config.Command) pkg.Option[Command] {
+	withSpec := func(com spec.Common) pkg.Option[Command] {
 		return func(c Command) Command {
 			// Configure default options
 			c.ID = getConfigID()
@@ -81,17 +76,17 @@ func Make(opts ...pkg.Option[Command]) Command {
 			c.File = filepath.Join(getConfigDir(), defaultConfigFile.value)
 			c.Verbose = false
 			// Configure command-line flags
-			cfg.BoolVar(&c.Verbose, 'v', "verbose", "log verbose output")
-			cfg.StringVar(&c.File, 'c', defaultConfigFile.flag, c.File, "path to configuration file")
+			com.BoolVar(&c.Verbose, 'v', "verbose", "log verbose output")
+			com.StringVar(&c.File, 'c', defaultConfigFile.flag, c.File, "path to configuration file")
 			// Install command and subcommands
-			c.Command = pkg.Make(model.WithConfig(cfg))
+			c.Command = pkg.Make(model.WithSpec(com))
 			_ = env.Make(env.WithParent(&c.Command))
 			_ = fs.Make(fs.WithParent(&c.Command))
 			return c
 		}
 	}
 	// Ensure the [config.Command] is initialized before applying any options.
-	return pkg.WithOptions(pkg.Make(withConfig(config.Make[Command]())), opts...)
+	return pkg.WithOptions(pkg.Make(withSpec(spec.Make[Command]())), opts...)
 }
 
 // WithArgs sets the arguments for the Command.

@@ -1,4 +1,4 @@
-package config
+package spec
 
 import (
 	"context"
@@ -15,23 +15,23 @@ type Interface interface {
 	Exec(ctx context.Context, args []string) error
 }
 
-// Command defines a command-line (sub)command and its associated flags.
-type Command struct {
+// Common defines common content of command-line (sub)commands.
+type Common struct {
 	*ff.Command
 	*ff.FlagSet
 }
 
-// IsZero checks if the Command is uninitialized.
-func (c Command) IsZero() bool { return c.Command == nil && c.FlagSet == nil }
+// IsZero checks if the Common is uninitialized.
+func (c Common) IsZero() bool { return c.Command == nil && c.FlagSet == nil }
 
-// Make returns a new Command initialized with the given options.
+// Make returns a new Common initialized with the given options.
 //
-// The Command passed to each Option is fully-initialized
+// The Common passed to each Option is fully-initialized
 // according to the Interface type parameter.
-func Make[I Interface](opts ...pkg.Option[Command]) Command {
-	// This Option must always be the first applied to a Command.
-	withInterface := func(impl Interface) pkg.Option[Command] {
-		return func(c Command) Command {
+func Make[I Interface](opts ...pkg.Option[Common]) Common {
+	// This Option must always be the first applied to a Common.
+	withInterface := func(impl Interface) pkg.Option[Common] {
+		return func(c Common) Common {
 			// Configure default options
 			shortHelp, longHelp := impl.Help()
 			c.FlagSet = ff.NewFlagSet(impl.Name())
@@ -46,6 +46,6 @@ func Make[I Interface](opts ...pkg.Option[Command]) Command {
 			return c
 		}
 	}
-	// Ensure the [Command] is initialized before applying any options.
+	// Ensure the [Common] is initialized before applying any options.
 	return pkg.WithOptions(pkg.Make(withInterface(*new(I))), opts...)
 }

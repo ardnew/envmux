@@ -4,44 +4,53 @@ import (
 	"context"
 
 	"github.com/ardnew/groot/pkg"
-	"github.com/ardnew/groot/pkg/model/config"
+	"github.com/ardnew/groot/pkg/model/spec"
 	"github.com/peterbourgon/ff/v4"
 )
 
-type Config = config.Command
-
-// Command defines a single command-line argument.
+// Command represents the context and configuration of a command.
+// It is not used as a command itself but as a container for actual commands.
+// The types of actual commands are composed of this type via embedding.
 type Command struct {
-	config Config
-	parent *Command
+	command spec.Common
+	parent  *Command
 }
 
-func (m Command) Parse(args []string, opts ...ff.Option) error {
-	return m.config.Command.Parse(args, opts...)
+// Parse parses the command-line arguments.
+func (c Command) Parse(args []string, opts ...ff.Option) error {
+	return c.command.Command.Parse(args, opts...)
 }
 
-func (m Command) Run(ctx context.Context) error { return m.config.Run(ctx) }
+// Run executes the command with the given context.
+func (c Command) Run(ctx context.Context) error { return c.command.Run(ctx) }
 
-func (m Command) IsZero() bool   { return m.config.IsZero() && m.parent == nil }
-func (m Command) Config() Config { return m.config }
-func (m Command) Parent() Command {
-	if m.parent != nil {
-		return *m.parent
+// IsZero checks if the Command is uninitialized.
+func (c Command) IsZero() bool { return c.command.IsZero() && c.parent == nil }
+
+// Config returns the configuration of the Command.
+func (c Command) Config() spec.Common { return c.command }
+
+// Parent returns the parent Command.
+func (c Command) Parent() Command {
+	if c.parent != nil {
+		return *c.parent
 	}
 	return Command{}
 }
 
-func WithConfig(config Config) pkg.Option[Command] {
+// WithSpec sets the common fields of the Command.
+func WithSpec(com spec.Common) pkg.Option[Command] {
 	return func(cmd Command) Command {
-		cmd.config = config
+		cmd.command = com
 		return cmd
 	}
 }
 
+// WithParent sets the parent Command.
 func WithParent(ptr *Command) pkg.Option[Command] {
 	return func(cmd Command) Command {
 		if ptr != nil {
-			p, c := ptr.config, cmd.config
+			p, c := ptr.command, cmd.command
 			if p.Command != nil && c.Command != nil {
 				p.Subcommands = append(p.Subcommands, c.Command)
 			}
