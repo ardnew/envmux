@@ -6,8 +6,8 @@ import (
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
 
-	"github.com/ardnew/groot/pkg"
-	"github.com/ardnew/groot/pkg/model"
+	"github.com/ardnew/envmux/cli/model"
+	"github.com/ardnew/envmux/pkg"
 )
 
 // Result represents the result of executing a command.
@@ -44,10 +44,10 @@ func MakeResult(mod model.Command, err error) Result {
 	case err == nil:
 		return ResultOK
 	case errors.Is(err, ff.ErrHelp):
-		return pkg.WithOptions(Result{}, resultUsage)
+		return pkg.Wrap(Result{}, resultUsage)
 	case errors.Is(err, ff.ErrNoExec):
-		return pkg.WithOptions(Result{}, resultUsage)
+		return pkg.Wrap(Result{}, resultUsage)
 	default:
-		return pkg.WithOptions(Result{}, resultUsage, resultErr(err, 1))
+		return pkg.Wrap(Result{}, resultUsage, resultErr(err, 1))
 	}
 }

@@ -3,10 +3,10 @@ package main
 import (
 	"os"
 
-	"github.com/ardnew/groot/cli"
+	"github.com/ardnew/envmux/cli"
 )
 
-// main is the entry point for the groot application.
+// main is the entry point for the envmux application.
 func main() {
 	result := cli.Run()
 

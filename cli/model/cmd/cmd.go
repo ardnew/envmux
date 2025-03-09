@@ -9,15 +9,15 @@ import (
 
 	"github.com/peterbourgon/ff/v4"
 
-	"github.com/ardnew/groot/pkg"
-	"github.com/ardnew/groot/pkg/model"
-	"github.com/ardnew/groot/pkg/model/cmd/env"
-	"github.com/ardnew/groot/pkg/model/cmd/fs"
-	"github.com/ardnew/groot/pkg/model/spec"
+	"github.com/ardnew/envmux/cli/model"
+	"github.com/ardnew/envmux/cli/model/cmd/env"
+	"github.com/ardnew/envmux/cli/model/cmd/fs"
+	"github.com/ardnew/envmux/cli/model/spec"
+	"github.com/ardnew/envmux/pkg"
 )
 
 const (
-	ID        = "groot"
+	ID        = "envmux"
 	syntax    = ID + " [flags] [subcommand ...]"
 	shortHelp = "virtual environments"
 	longHelp  = ID + ` is a tool for managing virtual environments.`
@@ -49,7 +49,7 @@ func (Command) Syntax() string             { return syntax }
 func (Command) Help() (short, long string) { return shortHelp, longHelp }
 
 // Exec executes the command with the given context and arguments.
-func (Command) Exec(context.Context, []string) error {
+func (c Command) Exec(context.Context, []string) error {
 	// _, err := fmt.Fprintf(c.Stdout, "[%s] arg=%+v\n", ID, arg)
 	return nil
 }
@@ -66,28 +66,36 @@ func (c Command) Run(ctx context.Context) error {
 }
 
 // Make creates a new Command with the given options.
-func Make(opts ...pkg.Option[Command]) Command {
-	withSpec := func(cs spec.Common) pkg.Option[Command] {
-		return func(c Command) Command {
-			// Configure default options
-			c.ID = getConfigID()
-			c.Args = os.Args[1:]
-			c.Stdout = os.Stdout
-			c.Stderr = os.Stderr
-			c.File = filepath.Join(getConfigDir(), defaultConfigFile.value)
-			c.Verbose = false
-			// Configure command-line flags
-			cs.BoolVar(&c.Verbose, 'v', "verbose", "log verbose output")
-			cs.StringVar(&c.File, 'c', defaultConfigFile.flag, c.File, "path to configuration file")
-			// Install command and subcommands
-			c.Command = pkg.Make(model.WithSpec(cs))
-			_ = env.Make(env.WithParent(&c.Command))
-			_ = fs.Make(fs.WithParent(&c.Command))
-			return c
-		}
-	}
+func Make(opts ...pkg.Option[Command]) (cmd Command) {
 	// Ensure the [config.Command] is initialized before applying any options.
-	return pkg.WithOptions(pkg.Make(withSpec(spec.Make[Command]())), opts...)
+	cc := pkg.Make(withSpec(spec.Make(&cmd)))
+	return pkg.Wrap(cc, opts...)
+}
+
+func withSpec(cs spec.Common) pkg.Option[Command] {
+	return func(c Command) Command {
+		// Configure default options
+		c.ID = getConfigID()
+		c.Args = os.Args[1:]
+		c.Stdout = os.Stdout
+		c.Stderr = os.Stderr
+		c.File = filepath.Join(getConfigDir(), defaultConfigFile.value)
+		c.Verbose = false
+		// Configure command-line flags
+		cs.BoolVar(&c.Verbose, 'v', "verbose", "log verbose output")
+		cs.StringVar(&c.File, 'c', defaultConfigFile.flag, c.File, "path to configuration file")
+		return pkg.Wrap(c, withCommand(cs))
+	}
+}
+
+func withCommand(cs spec.Common) pkg.Option[Command] {
+	return func(c Command) Command {
+		// Install command and subcommands
+		c.Command = pkg.Make(model.WithSpec(cs))
+		_ = env.Make(env.WithParent(&c.Command))
+		_ = fs.Make(fs.WithParent(&c.Command))
+		return c
+	}
 }
 
 // WithArgs sets the arguments for the Command.

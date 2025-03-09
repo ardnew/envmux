@@ -3,7 +3,7 @@ package cli
 import (
 	"context"
 
-	"github.com/ardnew/groot/pkg/model/cmd"
+	"github.com/ardnew/envmux/cli/model/cmd"
 )
 
 // Run executes the root command and returns the result.

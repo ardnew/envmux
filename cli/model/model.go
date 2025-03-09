@@ -5,13 +5,21 @@ import (
 
 	"github.com/peterbourgon/ff/v4"
 
-	"github.com/ardnew/groot/pkg"
-	"github.com/ardnew/groot/pkg/model/spec"
+	"github.com/ardnew/envmux/cli/model/spec"
+	"github.com/ardnew/envmux/pkg"
 )
 
 // Command represents the context and configuration of a command.
+//
 // It is not used as a command itself but as a container for actual commands.
 // The types of actual commands are composed of this type via embedding.
+//
+// All Command methods are immutable.
+// Any method that modifies its receiver will return a new Command.
+//
+// The With* functions returning a [pkg.Option] can be used with either
+// [pkg.Wrap] to modify an existing Command or
+// [pkg.Make] to create a new Command.
 type Command struct {
 	spec   spec.Common
 	parent *Command
@@ -32,11 +40,16 @@ func (c Command) IsZero() bool { return c.spec.IsZero() && c.parent == nil }
 func (c Command) Spec() spec.Common { return c.spec }
 
 // Parent returns the parent Command.
-func (c Command) Parent() Command {
-	if c.parent != nil {
-		return *c.parent
-	}
-	return Command{}
+//
+// Nil is returned if the Command has no parent.
+func (c Command) Parent() *Command { return c.parent }
+
+// Flag returns the flag with the given name defined in the receiver
+// or any of its ancestors.
+//
+// The second return value is true iff the flag is found.
+func (c Command) Flag(name string) (ff.Flag, bool) {
+	return c.spec.GetFlag(name)
 }
 
 // WithSpec sets the common fields specifying the Command.
