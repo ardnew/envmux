@@ -2,10 +2,7 @@ module github.com/ardnew/envmux
 
 go 1.23.2
 
-require (
-	github.com/alecthomas/repr v0.4.0
-	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de
-)
+require github.com/alecthomas/repr v0.4.0
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
