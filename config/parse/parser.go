@@ -8,30 +8,18 @@ import (
 	"github.com/alecthomas/participle/v2/lexer"
 )
 
-var (
-	LexerDefinition = sync.OnceValue(func() *lexer.StatefulDefinition {
-		return lexer.MustSimple([]lexer.SimpleRule{
-			{Name: "Template", Pattern: `<<([^>]|>[^>])*>>`},
-			{Name: "Comment", Pattern: `//[^\r\n]*`},
-			{Name: "Whitespace", Pattern: `\s+`},
-			{Name: "Punct", Pattern: `[,{}=:\[\]]`},
-			{Name: "Number", Pattern: `[-+]?(\d*\.)?\d+\b`},
-			{Name: "String", Pattern: `"(\\.|[^"])*"`},
-			{Name: "Ident", Pattern: `(?i)[a-z_][a-z0-9_\-\.]*`},
-			{Name: "Bareword", Pattern: `(?i)[a-z_/][^\s,{}=:\[\]]*`},
-		})
+var LexerDefinition = sync.OnceValue(func() *lexer.StatefulDefinition {
+	return lexer.MustSimple([]lexer.SimpleRule{
+		{Name: "Template", Pattern: `<<([^>]|>[^>])*>>`},
+		{Name: "Comment", Pattern: `//[^\r\n]*`},
+		{Name: "Whitespace", Pattern: `\s+`},
+		{Name: "Punct", Pattern: `[,{}=:\[\]]`},
+		{Name: "Number", Pattern: `[-+]?(\d*\.)?\d+\b`},
+		{Name: "String", Pattern: `"(\\.|[^"])*"`},
+		{Name: "Ident", Pattern: `(?i)[a-z_][a-z0-9_\-\.]*`},
+		{Name: "Bareword", Pattern: `(?i)[a-z_/][^\s,{}=:\[\]]*`},
 	})
-	LexerToken = sync.OnceValue(func() func(string) lexer.TokenType {
-		sym := lexer.DefaultDefinition.Symbols()
-		return func(s string) lexer.TokenType {
-			t, ok := sym[s]
-			if !ok {
-				return 0
-			}
-			return t
-		}
-	})
-)
+})
 
 // Terminal productions.
 type (

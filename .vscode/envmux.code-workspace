@@ -36,4 +36,10 @@
 			},
 		},
 	},
+	"extensions": {
+		"recommendations": [
+			"golang.go",
+			"dunstontc.vscode-go-syntax",
+		],
+	},
 }
