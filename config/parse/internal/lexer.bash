@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-#
-# This script generates a lexer for the Config parser.
+# ┌───── NOTE ────────────────────────────────────────────────────────────────┐
+# │  While other shells may work fine as-is, this script was originally       │
+# │  written for targets assumed compatible with GNU bash, version 5.0.       │
+# └───────────────────────────────────────────────────────────────────────────┘
+# This script generates a lexer for the configuration file parser.
 #  • Do NOT run this script directly!
 #    · It depends on env vars set by `go generate` (shown below).
 #  • Run this script:
 #    · When -> The lexer rules¹ have changed.
 #    · How² -> `go generate ./config/parse/...`
 #
-# [¹]: var LexerDefinition is defined in "config/parse/parser.go".
+# [¹]: var LexerGenerator (defined in "config/parse/model.go")
 # [²]: Run this command from the module root directory (containing "go.mod").
 
 gen-rules() {
@@ -16,7 +19,7 @@ gen-rules() {
 
 gen-lexer() {
   "${participle_bin_path}" gen lexer --name "${lexer_ident_prefix}" "${GOPACKAGE}" < "${lexer_rules_path}" |
-    perl -ple 'print "$ENV{generate_directive}" if $. == 1' | gofmt -s | tee "${lexer_src_path}" &>/dev/null
+    gofmt -s | tee "${lexer_out_path}" &>/dev/null
 }
 
 gen-clean() {
@@ -32,12 +35,11 @@ _run() {
 _init() {
   declare -rx lexer_ident_prefix="Config"
 
-  declare -rx generate_directive=$( sed -n "${GOLINE}p" "${GOFILE}" )
-
-  declare -rx lexer_src_path=$( realpath -qe "${GOFILE}" )
-  declare -rx internal_pkg_path="${lexer_src_path%/*}/internal"
-  declare -rx marshal_pkg_path="./$( realpath -qe "${internal_pkg_path}/marshal" --relative-to="${PWD}" )"
+  declare -rx generate_src_path=$( realpath -qe "${GOFILE}" )
+  declare -rx internal_pkg_path="${generate_src_path%/*}/internal"
+  declare -rx marshal_pkg_path="./$( realpath -qe "${internal_pkg_path}/lexer" --relative-to="${PWD}" )"
   declare -rx lexer_rules_path="${internal_pkg_path}/rules.json"
+  declare -rx lexer_out_path="${generate_src_path%/*}/$( basename "${0%.bash}" ).go"
 
   declare -rx participle_bin_path=$( type -P participle )
   declare -rx go_bin_path=$( type -P go )
@@ -56,7 +58,7 @@ _init() {
   #
   # thus, do not ever pass "_init" as the first argument to this script.
   # your PC will explode.
-  declare -r status="generating lexer: ${lexer_src_path}"
+  declare -r status="generating lexer: ${lexer_out_path}"
   ! gum=$( type -P gum ) ||
     exec "${gum}" spin \
       --title="${status}" \

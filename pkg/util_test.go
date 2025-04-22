@@ -51,7 +51,7 @@ func TestFormatEnvVar(t *testing.T) {
 	var validPanic bool
 	defer func(valid *bool) {
 		if r := recover(); r != nil {
-			if err, ok := r.(error); ok && errors.Is(err, ErrDefaultEnvVarOption) {
+			if err, ok := r.(error); ok && errors.Is(err, ErrInvalidEnvVar) {
 				*valid = true
 			}
 		}
@@ -61,7 +61,7 @@ func TestFormatEnvVar(t *testing.T) {
 	FormatEnvVar("foo")
 
 	if !validPanic {
-		t.Errorf("FormatEnvVar: expected panic with ErrDefaultEnvVarOption")
+		t.Errorf("FormatEnvVar: expected panic with ErrInvalidEnvVar")
 	}
 }
 

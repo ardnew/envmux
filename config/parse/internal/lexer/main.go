@@ -11,8 +11,8 @@ import (
 )
 
 func main() {
-	def := parse.LexerDefinition()
-	b, err := def.MarshalJSON()
+	gen := parse.LexerGenerator()
+	b, err := gen.MarshalJSON()
 	if err != nil {
 		panic(err)
 	}

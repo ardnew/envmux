@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/ardnew/envmux/cli/model"
-	"github.com/ardnew/envmux/cli/model/cmd/fs/test"
 	"github.com/ardnew/envmux/cli/model/spec"
 	"github.com/ardnew/envmux/pkg"
 )
@@ -43,7 +42,6 @@ func withSpec(cs spec.Common) pkg.Option[Command] {
 		// Configure command-line flags
 		// Install command and subcommands
 		c.Command = pkg.Make(model.WithSpec(cs))
-		_ = test.Make(test.WithParent(&c.Command))
 		return c
 	}
 }

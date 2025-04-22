@@ -1,8 +1,6 @@
 package pkg
 
 import (
-	"errors"
-	"fmt"
 	"iter"
 	"strings"
 
@@ -23,10 +21,6 @@ var DefaultEnvVarOption = EnvVarOption{
 	Break: []byte{'_'},
 }
 
-var ErrDefaultEnvVarOption = fmt.Errorf(
-	"%w: EnvVarOption: invalid default value", errors.ErrUnsupported,
-)
-
 func (o EnvVarOption) isValid() bool {
 	return o.Case != (cases.Caser{}) && o.Break != nil
 }
@@ -36,7 +30,7 @@ func (o EnvVarOption) asValid() EnvVarOption {
 		return o
 	}
 	if !DefaultEnvVarOption.isValid() {
-		panic(ErrDefaultEnvVarOption)
+		panic(ErrInvalidEnvVar)
 	}
 	if o.Case == (cases.Caser{}) {
 		o.Case = DefaultEnvVarOption.Case
@@ -87,7 +81,9 @@ func (o EnvVarOption) FormatEnvVar(run ...string) string {
 	return sb.String()
 }
 
-// Map returns a new sequence that yields elements of s transformed by f.
+// Map returns a sequence that yields in-order elements of s transformed by f.
+// If f is nil, the identity function is used to yield the original sequence.
+// If s is nil, nil is returned.
 func Map[T any](s iter.Seq[T], f func(T) T) iter.Seq[T] {
 	if s == nil {
 		return nil
@@ -102,4 +98,43 @@ func Map[T any](s iter.Seq[T], f func(T) T) iter.Seq[T] {
 			}
 		}
 	}
+}
+
+// Filter returns a sequence that yields in-order elements of s
+// that satisfy the predicate keep.
+// If s is nil, nil is returned.
+// If keep is nil, all elements are yielded.
+func Filter[T any](s iter.Seq[T], keep func(T) bool) iter.Seq[T] {
+	if s == nil {
+		return nil
+	}
+	if keep == nil {
+		keep = func(_ T) bool { return true }
+	}
+	return func(yield func(T) bool) {
+		for item := range s {
+			if keep(item) && !yield(item) {
+				return
+			}
+		}
+	}
+}
+
+// Unique is a set of unique values of comparable type T.
+type Unique[T comparable] map[T]struct{}
+
+// Contains returns whether the receiver contains the given value.
+func (u Unique[T]) Contains(v T) bool {
+	_, ok := u[v]
+	return ok
+}
+
+// Add adds an element to the receiver if it is not already present
+// and returns whether the element was added.
+func (u Unique[T]) Add(v T) bool {
+	if u.Contains(v) {
+		return false
+	}
+	u[v] = struct{}{}
+	return true
 }
