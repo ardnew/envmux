@@ -83,7 +83,7 @@ func TestParser(t *testing.T) {
 		t.Fatalf("parse: %v", m.Err())
 	}
 
-	result, err := m.Env().Eval(t.Context(), []string{"env2"})
+	result, err := m.Eval(t.Context(), "env2")
 	if err != nil {
 		t.Fatalf("eval: %v", err)
 	}

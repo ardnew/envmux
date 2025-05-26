@@ -21,10 +21,10 @@ import (
 var LexerGenerator = sync.OnceValue(func() *lexer.StatefulDefinition {
 	return lexer.MustSimple([]lexer.SimpleRule{
 		// XS matches whitespace and comments elided from the parse tree.
-		// But the lexer must still emit them for input reproduction.
+		// The lexer must emit these for input reproduction.
 		{Name: `XS`, Pattern: `(?:/\*(?:[^*]|\*[^/])*\*/|(?://|#)[^\r\n]*\r?\n|[ \r\n\t])`},
 		{Name: `String`, Pattern: `"(?:\\.|[^"])*"`},
-		{Name: `Ident`, Pattern: `[./a-zA-Z_][-./:\w]*`},
+		{Name: `Ident`, Pattern: `[./a-zA-Z_](\\.|[-./:\w])*`},
 		{Name: `Number`, Pattern: `(?:0x[0-9a-fA-F]+|0b[01]+|[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)`},
 		{Name: `RS`, Pattern: `;`},
 		{Name: `FS`, Pattern: `,`},
@@ -32,51 +32,91 @@ var LexerGenerator = sync.OnceValue(func() *lexer.StatefulDefinition {
 	})
 })
 
-type (
-	Compose struct {
-		Name string `XS* @( Ident ) XS*`
-	}
-	Subject struct {
-		Name string `XS* @( String | Ident ) XS*`
-	}
-	Mapping struct {
-		Name string `XS* @( Ident ) XS*`
-		Prec string `@( "?" )? XS*`
-		Op   string `@( ( ":" | "^" | "+" )? "=" ) XS*`
-		Expr *Expr  `@@ XS*`
-	}
-	Specification struct {
-		Coms []*Compose `XS* ( "<" XS* ( @@ XS* ( FS  XS* @@ XS* )* )? ">" XS* )?`
-		Subs []*Subject `XS* ( "(" XS* ( @@ XS* ( FS  XS* @@ XS* )* )? ")" XS* )?`
-		Maps []*Mapping `XS* ( "{" XS* ( @@ XS* ( RS* XS* @@ XS* )* )? "}" XS* )?`
-	}
-	Namespace struct {
-		Name string         `XS* @( Ident ) XS*`
-		Spec *Specification `@@! XS*`
-	}
-	Namespaces struct {
-		List []*Namespace `@@*`
-	}
-)
+// Compose represents a composition node in the AST.
+type Compose struct {
+	Pos    lexer.Position // Pos records the start position of the node.
+	EndPos lexer.Position // EndPos records the end position of the node.
+	Tokens []lexer.Token  // Tokens records the tokens consumed by the node.
 
-var (
-	Options      = []participle.Option{participle.Lexer(ConfigLexer)}
-	ParseOptions = []participle.ParseOption{participle.AllowTrailing(true)}
-)
+	Name string `XS* @( Ident ) XS*`
+}
 
+// Subject represents a subject node in the AST.
+type Subject struct {
+	Pos    lexer.Position // Pos records the start position of the node.
+	EndPos lexer.Position // EndPos records the end position of the node.
+	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
+
+	Name string `XS* @( String | Ident ) XS*`
+}
+
+// Mapping represents a mapping node in the AST.
+type Mapping struct {
+	Pos    lexer.Position // Pos records the start position of the node.
+	EndPos lexer.Position // EndPos records the end position of the node.
+	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
+
+	Name string `XS* @( Ident ) XS*`
+	Prec string `@( "?" )? XS*`
+	Op   string `@( ( ":" | "^" | "+" )? "=" ) XS*`
+	Expr *Expr  `@@ XS*`
+}
+
+// Definition represents a namespace definition node in the AST.
+type Definition struct {
+	Pos    lexer.Position // Pos records the start position of the node.
+	EndPos lexer.Position // EndPos records the end position of the node.
+	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
+
+	Coms []*Compose `XS* ( "<" XS* ( @@ XS* ( FS  XS* @@ XS* )* )? ">" XS* )?`
+	Subs []*Subject `XS* ( "(" XS* ( @@ XS* ( FS  XS* @@ XS* )* )? ")" XS* )?`
+	Maps []*Mapping `XS* ( "{" XS* ( @@ XS* ( RS* XS* @@ XS* )* )? "}" XS* )?`
+}
+
+// It contains a unique namespace identifier and its definition.
+type Namespace struct {
+	Pos    lexer.Position // Pos records the start position of the node.
+	EndPos lexer.Position // EndPos records the end position of the node.
+	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
+
+	Name string      `XS* @( Ident ) XS*`
+	Spec *Definition `@@! XS*`
+}
+
+// AST is the root node of the parsed configuration file.
+type AST struct {
+	Pos    lexer.Position // Pos records the start position of the node.
+	EndPos lexer.Position // EndPos records the end position of the node.
+	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
+
+	List []*Namespace `@@*`
+}
+
+// Options are the default participle options used to build the parser.
+var Options = []participle.Option{participle.Lexer(ConfigLexer)}
+
+// ParseOptions are the default participle parse options used to parse the AST.
+var ParseOptions = []participle.ParseOption{participle.AllowTrailing(true)}
+
+// build returns a singleton parser for the AST type.
 var build = sync.OnceValue(
-	func() *participle.Parser[Namespaces] {
-		return participle.MustBuild[Namespaces](Options...)
+	func() *participle.Parser[AST] {
+		return participle.MustBuild[AST](Options...)
 	},
 )
 
+// Grammar returns the grammar of the parser as a string in EBNF format.
 func Grammar() string { return build().String() }
 
-func Build(r io.Reader) (*Namespaces, error) {
+// Build parses the input reader and returns the AST.
+func Build(r io.Reader) (*AST, error) {
 	return build().Parse(pkg.Name, r, ParseOptions...)
 }
 
-func (s *Specification) Compositions() iter.Seq[string] {
+// Compositions returns a sequence of unique namespace identifiers composing
+// the Definition.
+// Duplicate names are removed; only the first occurrence is retained.
+func (s *Definition) Compositions() iter.Seq[string] {
 	if s == nil {
 		return nil
 	}
@@ -90,7 +130,11 @@ func (s *Specification) Compositions() iter.Seq[string] {
 	}
 }
 
-func (s *Specification) Subjects(appends ...string) iter.Seq[string] {
+// Subjects returns a sequence of unique subject names in the [Definition],
+// including any additional names provided as arguments.
+// The additional names are appended to the definition's subjects.
+// Duplicate names are removed; only the first occurrence is retained.
+func (s *Definition) Subjects(appends ...string) iter.Seq[string] {
 	if s == nil {
 		return nil
 	}

@@ -10,6 +10,8 @@ require (
 	golang.org/x/text v0.23.0
 )
 
+require github.com/pkg/errors v0.9.1 // indirect
+
 require (
 	github.com/carlmjohnson/deque v0.23.1 // indirect
 	github.com/carlmjohnson/flowmatic v0.23.4

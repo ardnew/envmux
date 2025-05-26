@@ -1,19 +1,25 @@
 package parse
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/alecthomas/participle/v2/lexer"
-
 	"github.com/ardnew/envmux/pkg"
+	"github.com/pkg/errors"
 )
 
+// Expr represents an expression node in the AST.
 type Expr struct {
-	Pos, EndPos lexer.Position
-	Src         string
+	Pos    lexer.Position // Pos records the start position of the node.
+	EndPos lexer.Position // EndPos records the end position of the node.
+	Tokens []lexer.Token  // Tokens records the tokens consumed by the node.
+
+	Src string
 }
 
+// Parse parses an expression using the provided lexer
+// and stores the unevaluated source code in the Expr's Src field.
+// Returns an error if parsing fails.
 func (e *Expr) Parse(lex *lexer.PeekingLexer) (err error) {
 	e.Src, err = e.parse(lex)
 	return err
@@ -33,7 +39,7 @@ func (e *Expr) parse(lex *lexer.PeekingLexer) (string, error) {
 		} else if tok.Value == "}" {
 			braceDepth--
 			if braceDepth < 0 {
-				return "", fmt.Errorf("%w: unexpected '}'", pkg.ErrInvalidExpression)
+				return "", errors.Wrap(pkg.ErrInvalidExpression, "unexpected '}'")
 			}
 			continue
 		} else if tok.Value == ";" && braceDepth == 0 {
@@ -42,21 +48,7 @@ func (e *Expr) parse(lex *lexer.PeekingLexer) (string, error) {
 		result.WriteString(tok.Value)
 	}
 	if braceDepth != 0 {
-		return "", fmt.Errorf("%w: expected '}'", pkg.ErrInvalidExpression)
+		return "", errors.Wrap(pkg.ErrInvalidExpression, "expected '}'")
 	}
 	return result.String(), nil
 }
-
-// func (e *Expr) String() string {
-// 	var res any
-// 	var err error
-// 	if e.Program != nil {
-// 		res, err = expr.Run(e.Program, envContext())
-// 	} else {
-// 		res, err = expr.Eval(e.Src, envContext())
-// 	}
-// 	if err != nil {
-// 		return fmt.Errorf("%w: %w", pkg.ErrInvalidExpression, err).Error()
-// 	}
-// 	return fmt.Sprintf("%v", res)
-// }

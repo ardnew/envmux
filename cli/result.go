@@ -39,7 +39,7 @@ func resultHelp(help string) pkg.Option[Result] {
 
 // MakeResult creates a Result based on the given command and error.
 func MakeResult(mod model.Command, err error) Result {
-	resultUsage := resultHelp(ffhelp.Command(mod.Spec().Command).String())
+	resultUsage := resultHelp(ffhelp.Command(mod.Definition()).String())
 	switch {
 	case err == nil:
 		return ResultOK
@@ -48,6 +48,6 @@ func MakeResult(mod model.Command, err error) Result {
 	case errors.Is(err, ff.ErrNoExec):
 		return pkg.Wrap(Result{}, resultUsage)
 	default:
-		return pkg.Wrap(Result{}, resultUsage, resultErr(err, 1))
+		return pkg.Wrap(Result{}, resultErr(err, 1))
 	}
 }

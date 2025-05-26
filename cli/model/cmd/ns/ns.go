@@ -1,22 +1,24 @@
-package env
+package ns
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ardnew/envmux/cli/model"
-	"github.com/ardnew/envmux/cli/model/spec"
+	"github.com/ardnew/envmux/cli/model/cmd/ns/get"
+	"github.com/ardnew/envmux/cli/model/proto"
 	"github.com/ardnew/envmux/pkg"
 )
 
 const (
-	ID        = "env"
+	ID        = "ns"
 	syntax    = ID + " [flags] [subcommand ...]"
-	shortHelp = "environment variables"
-	longHelp  = `environment variables are user-definable key-value pairs ` +
-		`that are accessible to a process and its children.`
+	shortHelp = "namespace management"
+	longHelp  = `namespaces are isolated sets of environment variables. ` +
+		`composite namespaces can be generated dynamically.`
 )
 
-// Command represents the env command.
+// Command represents the ns command.
 type Command struct {
 	model.Command
 }
@@ -26,23 +28,29 @@ func (Command) Syntax() string             { return syntax }
 func (Command) Help() (short, long string) { return shortHelp, longHelp }
 
 // Exec executes the command with the given context and arguments.
-func (Command) Exec(context.Context, []string) error {
+func (c Command) Exec(ctx context.Context, arg []string) error {
+	verbose, _ := c.FlagAsBool("verbose")
+	if verbose {
+		_, err := fmt.Printf("[%s] arg=%+v\ncfg=%+v\n", ID, arg, c.Env())
+		return err
+	}
 	return nil
 }
 
-// Make creates a new env Command with the given options.
+// Make creates a new ns Command with the given options.
 func Make(opts ...pkg.Option[Command]) (cmd Command) {
 	// Ensure the [config.Command] is initialized before applying any options.
-	cc := pkg.Make(withSpec(spec.Make(&cmd)))
+	cc := pkg.Make(withSpec(proto.Make(&cmd)))
 	return pkg.Wrap(cc, opts...)
 }
 
-func withSpec(cs spec.Common) pkg.Option[Command] {
+func withSpec(s proto.Type) pkg.Option[Command] {
 	return func(c Command) Command {
 		// Configure default options
 		// Configure command-line flags
 		// Install command and subcommands
-		c.Command = pkg.Make(model.WithSpec(cs))
+		c.Command = pkg.Make(model.WithProto(s))
+		_ = get.Make(get.WithParent(&c.Command))
 		return c
 	}
 }

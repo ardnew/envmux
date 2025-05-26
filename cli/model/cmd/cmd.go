@@ -2,17 +2,19 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
+	"regexp"
 
 	"github.com/peterbourgon/ff/v4"
 
 	"github.com/ardnew/envmux/cli/model"
-	"github.com/ardnew/envmux/cli/model/cmd/env"
 	"github.com/ardnew/envmux/cli/model/cmd/fs"
-	"github.com/ardnew/envmux/cli/model/spec"
+	"github.com/ardnew/envmux/cli/model/cmd/ns"
+	"github.com/ardnew/envmux/cli/model/proto"
+	"github.com/ardnew/envmux/config"
 	"github.com/ardnew/envmux/pkg"
 )
 
@@ -23,14 +25,6 @@ const (
 	longHelp  = ID + ` is a tool for managing virtual environments.`
 )
 
-type defaultFlag[T any] struct {
-	flag  string
-	value T
-}
-
-//nolint:gochecknoglobals
-var defaultConfigFile = defaultFlag[string]{flag: "config", value: "config"}
-
 // Command represents the root command for the application.
 type Command struct {
 	model.Command
@@ -38,116 +32,179 @@ type Command struct {
 	ID   string
 	Args []string
 
-	Stdout  io.Writer
-	Stderr  io.Writer
-	File    string
-	Verbose bool
+	Stdout     io.Writer
+	Stderr     io.Writer
+	Config     string
+	Namespaces string
+	Verbose    bool
+
+	config config.Model // configuration file AST
 }
+
+// ConfigPrefix returns the base prefix string used to construct the path to the
+// configuration directory and the prefix for environment variable identifiers.
+//
+// ConfigPrefix is exported to allow prefix customization.
+//
+// By default, the prefix is the base name of the executable file
+// unless it matches one of the following substitution rules:
+//
+//   - "__debug_bin" (default output of the dlv debugger): replaced with [ID]
+var ConfigPrefix = func() string {
+	id := os.Args[0]
+	if exe, err := os.Executable(); err == nil {
+		id = exe
+	}
+	id = filepath.Base(id)
+	substitute := []struct {
+		*regexp.Regexp
+		string
+	}{
+		{regexp.MustCompile(`^__debug_bin\d+$`), ID}, // default output of the dlv debugger
+	}
+	for _, sub := range substitute {
+		id = sub.Regexp.ReplaceAllString(id, sub.string)
+	}
+	return id
+}
+
+type defaultFlag[T any] struct {
+	flag  string
+	value T
+}
+
+//nolint:gochecknoglobals
+var (
+	defaultConfig     = defaultFlag[string]{flag: "config", value: "config"}
+	defaultNamespaces = defaultFlag[string]{flag: "namespaces", value: "namespaces"}
+)
 
 func (Command) Name() string               { return ID }
 func (Command) Syntax() string             { return syntax }
 func (Command) Help() (short, long string) { return shortHelp, longHelp }
 
 // Exec executes the command with the given context and arguments.
-func (c Command) Exec(context.Context, []string) error {
-	// _, err := fmt.Fprintf(c.Stdout, "[%s] arg=%+v\n", ID, arg)
+func (r Command) Exec(ctx context.Context, args []string) error {
+	env, err := r.Eval(ctx, args...)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%+v\n", env)
+	s := pkg.Wrap(r.Command, model.WithEnv(env))
+	if r.Verbose {
+		_, _ = fmt.Fprintf(r.Stdout, "[%s] arg=%+v\ncfg=%+v\n", ID, args, s)
+	}
 	return nil
 }
 
 // Run parses and runs the command with the given context.
-func (c Command) Run(ctx context.Context) error {
-	if err := c.Command.Parse(c.Args, getParseOptions(c.ID)...); err != nil {
+func (r Command) Run(ctx context.Context) error {
+	if err := r.Parse(r.Args, getParseOptions(r.ID)...); err != nil {
 		return err
 	}
-	if err := c.Command.Run(ctx); err != nil {
+	read, err := pkg.ReaderFromFile(r.Namespaces)
+	if err != nil {
+		return fmt.Errorf("%w: %w: %s", pkg.ErrInvalidConfigFile, err, r.Namespaces)
+	}
+	err = r.Command.Run(ctx, pkg.Make(config.WithReader(read)), r.Args...)
+	if err != nil {
 		return err
 	}
 	return nil
 }
 
 // Make creates a new Command with the given options.
-func Make(opts ...pkg.Option[Command]) (cmd Command) {
+func Make(opts ...pkg.Option[Command]) (r Command) {
 	// Ensure the [config.Command] is initialized before applying any options.
-	cc := pkg.Make(withSpec(spec.Make(&cmd)))
-	return pkg.Wrap(cc, opts...)
-}
-
-func withSpec(cs spec.Common) pkg.Option[Command] {
-	return func(c Command) Command {
-		// Configure default options
-		c.ID = getConfigID()
-		c.Args = os.Args[1:]
-		c.Stdout = os.Stdout
-		c.Stderr = os.Stderr
-		c.File = filepath.Join(getConfigDir(), defaultConfigFile.value)
-		c.Verbose = false
-		// Configure command-line flags
-		cs.BoolVar(&c.Verbose, 'v', "verbose", "log verbose output")
-		cs.StringVar(&c.File, 'c', defaultConfigFile.flag, c.File, "path to configuration file")
-		return pkg.Wrap(c, withCommand(cs))
-	}
-}
-
-func withCommand(cs spec.Common) pkg.Option[Command] {
-	return func(c Command) Command {
-		// Install command and subcommands
-		c.Command = pkg.Make(model.WithSpec(cs))
-		_ = env.Make(env.WithParent(&c.Command))
-		_ = fs.Make(fs.WithParent(&c.Command))
-		return c
-	}
+	c := pkg.Make(withProto(proto.Make(&r)))
+	return pkg.Wrap(c, opts...)
 }
 
 // WithArgs sets the arguments for the Command.
 func WithArgs(args ...string) pkg.Option[Command] {
-	return func(c Command) Command {
+	return func(r Command) Command {
 		if len(args) > 0 {
-			c.ID = filepath.Base(args[0])
-			c.Args = args[1:] // empty slice if len(args) == 1
+			r.ID = filepath.Base(args[0])
+			r.Args = args[1:] // empty slice if len(args) == 1
 		}
-		return c
+		return r
 	}
 }
 
 // WithOutput sets the output writers for the Command.
 func WithOutput(stdout, stderr io.Writer) pkg.Option[Command] {
-	return func(c Command) Command {
-		c.Stdout = stdout
-		c.Stderr = stderr
-		return c
+	return func(r Command) Command {
+		r.Stdout = stdout
+		r.Stderr = stderr
+		return r
 	}
 }
 
-// WithFile sets the configuration file for the Command.
-func WithFile(file string) pkg.Option[Command] {
-	return func(c Command) Command {
-		c.File = file
-		return c
+// WithConfig sets the configuration file for the Command.
+func WithConfig(path string) pkg.Option[Command] {
+	return func(r Command) Command {
+		r.Config = path
+		return r
+	}
+}
+
+// WithNamespace sets the namespace file for the Command.
+func WithNamespace(path string) pkg.Option[Command] {
+	return func(r Command) Command {
+		r.Namespaces = path
+		return r
 	}
 }
 
 // WithVerbose sets the verbose flag for the Command.
 func WithVerbose(verbose bool) pkg.Option[Command] {
-	return func(c Command) Command {
-		c.Verbose = verbose
-		return c
+	return func(r Command) Command {
+		r.Verbose = verbose
+		return r
 	}
 }
 
-// getConfigID returns the ID of the configuration.
-func getConfigID() string {
-	id := os.Args[0]
-	if exe, err := os.Executable(); err == nil {
-		id = exe
+func withProto(s proto.Type) pkg.Option[Command] {
+	return func(r Command) Command {
+		// Configure default options
+		r.ID = ConfigPrefix()
+		r.Args = os.Args[1:]
+		r.Stdout = os.Stdout
+		r.Stderr = os.Stderr
+		r.Config = filepath.Join(getConfigDir(), defaultConfig.value)
+		r.Namespaces = filepath.Join(getConfigDir(), defaultNamespaces.value)
+		r.Verbose = false
+
+		// Configure command-line flags
+		s.BoolVar(&r.Verbose, 'v', "verbose", "log verbose output")
+		s.StringVar(&r.Config, 'c', defaultConfig.flag, r.Config, "path to configuration file")
+		s.StringVar(&r.Namespaces, 'f', defaultNamespaces.flag, r.Namespaces, "path to namespace file")
+
+		// Install command and subcommands
+		r.Command = pkg.Make(model.WithProto(s))
+		_ = ns.Make(ns.WithParent(&r.Command))
+		_ = fs.Make(fs.WithParent(&r.Command))
+
+		return r
 	}
-	if strings.Contains(id, "__debug_bin") {
-		id = ID
-	}
-	return filepath.Base(id)
 }
 
 // getConfigDir returns the configuration directory.
-func getConfigDir(relPath ...string) string {
+//
+// The configuration directory is constructed by appending each given subdir
+// to the root configuration directory.
+//
+// If no subdir arguments are given, the config ID is used (see [ConfigIDMap]).
+//
+// If the given subdir elements represents an absolute path (after joining),
+// the absolute path is returned as-is.
+//
+// The root configuration directory is determined in the following order:
+//
+//  1. Environment variable XDG_CONFIG_HOME (if defined)
+//  2. Environment variable HOME (if defined), with ".config" appended
+//  3. Current working directory
+func getConfigDir(subdir ...string) string {
 	root, ok := os.LookupEnv("XDG_CONFIG_HOME")
 	if !ok {
 		if root, ok = os.LookupEnv("HOME"); ok {
@@ -160,20 +217,27 @@ func getConfigDir(relPath ...string) string {
 			}
 		}
 	}
-	path := getConfigID()
-	if len(relPath) > 0 {
-		path = filepath.Join(relPath...)
+
+	path := ConfigPrefix()
+	if len(subdir) > 0 {
+		path = filepath.Join(subdir...)
 	}
+
+	if filepath.IsAbs(path) {
+		return path
+	}
+
 	return filepath.Join(root, path)
 }
 
 // getParseOptions returns the options for parsing the command-line arguments.
-func getParseOptions(configFile string, envVarPrefix ...string) []ff.Option {
+func getParseOptions(envVarPrefix ...string) []ff.Option {
 	if len(envVarPrefix) == 0 {
-		envVarPrefix = []string{getConfigID()}
+		envVarPrefix = []string{ConfigPrefix()}
 	}
+
 	return []ff.Option{
-		ff.WithConfigFileFlag(configFile),
+		ff.WithConfigFileFlag(defaultConfig.flag),
 		ff.WithConfigFileParser(ff.PlainParser),
 		ff.WithConfigAllowMissingFile(),
 		ff.WithEnvVarPrefix(pkg.FormatEnvVar(envVarPrefix...)),

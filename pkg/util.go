@@ -1,12 +1,23 @@
 package pkg
 
 import (
+	"bufio"
+	"io"
 	"iter"
+	"os"
 	"strings"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
+
+func ReaderFromFile(filename string) (io.Reader, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	return bufio.NewReader(f), nil
+}
 
 // EnvVarOption configures environment variable identifier formatting.
 type EnvVarOption struct {
@@ -104,6 +115,8 @@ func Map[T any](s iter.Seq[T], f func(T) T) iter.Seq[T] {
 // that satisfy the predicate keep.
 // If s is nil, nil is returned.
 // If keep is nil, all elements are yielded.
+//
+// Filter is to slices as [FilterKeys] is to maps.
 func Filter[T any](s iter.Seq[T], keep func(T) bool) iter.Seq[T] {
 	if s == nil {
 		return nil
@@ -120,13 +133,46 @@ func Filter[T any](s iter.Seq[T], keep func(T) bool) iter.Seq[T] {
 	}
 }
 
+// FilterKeys returns a sequence that yields in-order key-value pairs of s
+// for which the key satisfies the predicate keep.
+// If s is nil, nil is returned.
+// If keep is nil, all key-value pairs are yielded.
+//
+// FilterKeys is to maps as [Filter] is to slices.
+func FilterKeys[K comparable, V any](s iter.Seq2[K, V], keep func(K) bool) iter.Seq2[K, V] {
+	if s == nil {
+		return nil
+	}
+	if keep == nil {
+		keep = func(_ K) bool { return true }
+	}
+	return func(yield func(K, V) bool) {
+		for key, val := range s {
+			if keep(key) && !yield(key, val) {
+				return
+			}
+		}
+	}
+}
+
 // Unique is a set of unique values of comparable type T.
+// It is implemented as a map from T to an empty struct,
+// since the empty struct is zero-sized and requires no memory.
+//
+// The zero value of Unique is an empty set and is safe to use.
+//
+// Test for set membership with [Contains].
+// Use [Add] to simultaneously test for membership and add an element.
 type Unique[T comparable] map[T]struct{}
 
 // Contains returns whether the receiver contains the given value.
 func (u Unique[T]) Contains(v T) bool {
 	_, ok := u[v]
 	return ok
+}
+
+func (c Unique[T]) Set(v T) {
+	c[v] = struct{}{}
 }
 
 // Add adds an element to the receiver if it is not already present

@@ -1,4 +1,4 @@
-package fs
+package get
 
 import (
 	"context"
@@ -10,28 +10,29 @@ import (
 )
 
 const (
-	ID        = "fs"
+	ID        = "get"
 	syntax    = ID + " [flags] [subcommand ...]"
-	shortHelp = "file system operations"
-	longHelp  = `file system operations for managing files and directories.`
+	shortHelp = "evaluate environment variable from namespace"
+	longHelp  = `evaluate the expression assigned to an environment variable ` +
+		`in the context of a given namespace.`
 )
 
-// Command represents the fs command.
+// Command represents the get command.
 type Command struct {
 	model.Command
 }
 
-func (Command) Name() string               { return ID }
+func (c Command) Name() string             { return ID }
 func (Command) Syntax() string             { return syntax }
 func (Command) Help() (short, long string) { return shortHelp, longHelp }
 
 // Exec executes the command with the given context and arguments.
-func (c Command) Exec(_ context.Context, arg []string) error {
+func (c Command) Exec(ctx context.Context, arg []string) error {
 	_, err := fmt.Printf("[%s] arg=%+v\ncfg=%+v\n", ID, arg, c.Env())
 	return err
 }
 
-// Make creates a new fs Command with the given options.
+// Make creates a new env Command with the given options.
 func Make(opts ...pkg.Option[Command]) (cmd Command) {
 	// Ensure the [config.Command] is initialized before applying any options.
 	cc := pkg.Make(withSpec(proto.Make(&cmd)))
@@ -48,7 +49,7 @@ func withSpec(s proto.Type) pkg.Option[Command] {
 	}
 }
 
-// WithParent sets the parent command for the fs Command.
+// WithParent sets the parent command for the env Command.
 func WithParent(ptr *model.Command) pkg.Option[Command] {
 	return func(c Command) Command {
 		c.Command = pkg.Wrap(c.Command, model.WithParent(ptr))
