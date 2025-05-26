@@ -57,8 +57,7 @@ type Mapping struct {
 	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
 
 	Name string `XS* @( Ident ) XS*`
-	Prec string `@( "?" )? XS*`
-	Op   string `@( ( ":" | "^" | "+" )? "=" ) XS*`
+	Op   string `@( "=" ) XS*`
 	Expr *Expr  `@@ XS*`
 }
 

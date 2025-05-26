@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"strconv"
+	"strings"
 
 	"github.com/peterbourgon/ff/v4"
 
@@ -55,6 +56,26 @@ func (c Command) Config() config.Model { return c.proto.Config() }
 
 // Env returns the resolved environment variables.
 func (c Command) Env() map[string]string { return c.proto.Env() }
+
+// Environ returns the environment variables as a slice of strings
+// in the form "key=value" suitable for use with os.Exec or os.Environ.
+// If the environment is nil, an empty slice is returned.
+func (c Command) Environ() []string {
+	env := c.proto.Env()
+	if env == nil {
+		return []string{}
+	}
+	// Convert the map to a slice of strings in the form "key=value"
+	result := make([]string, 0, len(env))
+	for k, v := range env {
+		var sb strings.Builder
+		sb.WriteString(k)
+		sb.WriteString("=")
+		sb.WriteString(strconv.Quote(v))
+		result = append(result, sb.String())
+	}
+	return result
+}
 
 // Definition returns the command's underlying Command.
 func (c Command) Definition() *ff.Command { return c.proto.Command }

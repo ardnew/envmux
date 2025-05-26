@@ -127,21 +127,6 @@ func (m Model) evalMapping(
 ) (vars.Env[string], error) {
 	env := pkg.Make(vars.WithContext(ctx), vars.WithExports(eval))
 
-	currVal, defined := env[dict.Name]
-	replace := len(dict.Prec) == 0
-
-	if defined && !replace {
-		return collect(env).Export(), nil
-	}
-
-	// Check for immediate assignment (unevaluated expression)
-	if dict.Op[0] == ':' {
-		if !defined || replace {
-			env[dict.Name] = dict.Expr.Src
-		}
-		return collect(env).Export(), nil
-	}
-
 	env[vars.SubjectKey] = "" // placeholder for compiler
 
 	// We have to pass the environment to both [expr.Compile] and [expr.Run].
@@ -184,18 +169,9 @@ func (m Model) evalMapping(
 			str = val
 		}
 
-		if !defined || dict.Op[0] == '=' {
-			currVal = str
-		} else {
-			switch dict.Op[0] {
-			case '^':
-				currVal = fmt.Sprintf("%s%s", str, currVal)
-			case '+':
-				currVal = fmt.Sprintf("%s%s", currVal, str)
-			}
-		}
-		env[dict.Name] = currVal
-		defined = true
+		env[dict.Name] = str
+
+		// fmt.Println(collect(env).Export())
 	}
 
 	return collect(env).Export(), nil

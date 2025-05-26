@@ -84,29 +84,33 @@ func (Command) Syntax() string             { return syntax }
 func (Command) Help() (short, long string) { return shortHelp, longHelp }
 
 // Exec executes the command with the given context and arguments.
-func (r Command) Exec(ctx context.Context, args []string) error {
-	env, err := r.Eval(ctx, args...)
+func (c Command) Exec(ctx context.Context, args []string) error {
+	env, err := c.Eval(ctx, args...)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%+v\n", env)
-	s := pkg.Wrap(r.Command, model.WithEnv(env))
-	if r.Verbose {
-		_, _ = fmt.Fprintf(r.Stdout, "[%s] arg=%+v\ncfg=%+v\n", ID, args, s)
+	// fmt.Printf("%+v\n", env)
+	s := pkg.Wrap(c.Command, model.WithEnv(env))
+	if c.Verbose {
+		_, _ = fmt.Fprintf(c.Stdout, "[%s] arg=%+v\ncfg=%+v\n", ID, args, s)
+	}
+
+	for _, e := range s.Environ() {
+		_, _ = fmt.Fprintln(c.Stdout, e)
 	}
 	return nil
 }
 
 // Run parses and runs the command with the given context.
-func (r Command) Run(ctx context.Context) error {
-	if err := r.Parse(r.Args, getParseOptions(r.ID)...); err != nil {
+func (c Command) Run(ctx context.Context) error {
+	if err := c.Parse(c.Args, getParseOptions(c.ID)...); err != nil {
 		return err
 	}
-	read, err := pkg.ReaderFromFile(r.Namespaces)
+	read, err := pkg.ReaderFromFile(c.Namespaces)
 	if err != nil {
-		return fmt.Errorf("%w: %w: %s", pkg.ErrInvalidConfigFile, err, r.Namespaces)
+		return fmt.Errorf("%w: %w: %s", pkg.ErrInvalidConfigFile, err, c.Namespaces)
 	}
-	err = r.Command.Run(ctx, pkg.Make(config.WithReader(read)), r.Args...)
+	err = c.Command.Run(ctx, pkg.Make(config.WithReader(read)), c.Args...)
 	if err != nil {
 		return err
 	}
@@ -122,70 +126,70 @@ func Make(opts ...pkg.Option[Command]) (r Command) {
 
 // WithArgs sets the arguments for the Command.
 func WithArgs(args ...string) pkg.Option[Command] {
-	return func(r Command) Command {
+	return func(c Command) Command {
 		if len(args) > 0 {
-			r.ID = filepath.Base(args[0])
-			r.Args = args[1:] // empty slice if len(args) == 1
+			c.ID = filepath.Base(args[0])
+			c.Args = args[1:] // empty slice if len(args) == 1
 		}
-		return r
+		return c
 	}
 }
 
 // WithOutput sets the output writers for the Command.
 func WithOutput(stdout, stderr io.Writer) pkg.Option[Command] {
-	return func(r Command) Command {
-		r.Stdout = stdout
-		r.Stderr = stderr
-		return r
+	return func(c Command) Command {
+		c.Stdout = stdout
+		c.Stderr = stderr
+		return c
 	}
 }
 
 // WithConfig sets the configuration file for the Command.
 func WithConfig(path string) pkg.Option[Command] {
-	return func(r Command) Command {
-		r.Config = path
-		return r
+	return func(c Command) Command {
+		c.Config = path
+		return c
 	}
 }
 
 // WithNamespace sets the namespace file for the Command.
 func WithNamespace(path string) pkg.Option[Command] {
-	return func(r Command) Command {
-		r.Namespaces = path
-		return r
+	return func(c Command) Command {
+		c.Namespaces = path
+		return c
 	}
 }
 
 // WithVerbose sets the verbose flag for the Command.
 func WithVerbose(verbose bool) pkg.Option[Command] {
-	return func(r Command) Command {
-		r.Verbose = verbose
-		return r
+	return func(c Command) Command {
+		c.Verbose = verbose
+		return c
 	}
 }
 
 func withProto(s proto.Type) pkg.Option[Command] {
-	return func(r Command) Command {
+	return func(c Command) Command {
 		// Configure default options
-		r.ID = ConfigPrefix()
-		r.Args = os.Args[1:]
-		r.Stdout = os.Stdout
-		r.Stderr = os.Stderr
-		r.Config = filepath.Join(getConfigDir(), defaultConfig.value)
-		r.Namespaces = filepath.Join(getConfigDir(), defaultNamespaces.value)
-		r.Verbose = false
+		c.ID = ConfigPrefix()
+		c.Args = os.Args[1:]
+		c.Stdout = os.Stdout
+		c.Stderr = os.Stderr
+		c.Config = filepath.Join(getConfigDir(), defaultConfig.value)
+		c.Namespaces = filepath.Join(getConfigDir(), defaultNamespaces.value)
+		c.Verbose = false
 
 		// Configure command-line flags
-		s.BoolVar(&r.Verbose, 'v', "verbose", "log verbose output")
-		s.StringVar(&r.Config, 'c', defaultConfig.flag, r.Config, "path to configuration file")
-		s.StringVar(&r.Namespaces, 'f', defaultNamespaces.flag, r.Namespaces, "path to namespace file")
+		s.BoolVar(&c.Verbose, 'v', "verbose", "log verbose output")
+		s.StringVar(&c.Config, 'c', defaultConfig.flag, c.Config, "path to configuration file")
+		s.StringVar(&c.Namespaces, 'f', defaultNamespaces.flag, c.Namespaces, "path to namespace file")
 
 		// Install command and subcommands
-		r.Command = pkg.Make(model.WithProto(s))
-		_ = ns.Make(ns.WithParent(&r.Command))
-		_ = fs.Make(fs.WithParent(&r.Command))
+		c.Command = pkg.Make(model.WithProto(s))
+		_ = ns.Make(ns.WithParent(&c.Command))
+		_ = fs.Make(fs.WithParent(&c.Command))
 
-		return r
+		return c
 	}
 }
 

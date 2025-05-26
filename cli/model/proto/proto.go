@@ -2,6 +2,7 @@ package proto
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/peterbourgon/ff/v4"
 
@@ -43,11 +44,11 @@ func (t Type) Eval(ctx context.Context, args ...string) (map[string]string, erro
 		return nil, pkg.ErrInvalidConfigFile
 	}
 	t = pkg.Wrap(t, WithConfig(cfg))
-	if t.config.Env().IsZero() {
-		return nil, pkg.ErrInvalidConfig
-	}
+	// if t.config.Env().IsZero() {
+	// 	return nil, pkg.ErrInvalidConfig
+	// }
 	if t.config.Err() != nil {
-		return nil, t.config.Err()
+		return nil, fmt.Errorf("%w: %w", pkg.ErrInvalidConfig, t.config.Err())
 	}
 	if len(args) == 0 {
 		args = t.defaults
