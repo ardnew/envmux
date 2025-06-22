@@ -1,3 +1,4 @@
+//nolint:ireturn
 package pkg
 
 // Option functions return their argument with modifications applied.
@@ -11,5 +12,6 @@ func Wrap[T any](t T, opts ...Option[T]) T {
 	for _, o := range opts {
 		t = o(t)
 	}
+
 	return t
 }

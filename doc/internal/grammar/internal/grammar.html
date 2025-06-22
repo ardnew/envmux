@@ -12,34 +12,34 @@ h1 {
 <link rel='stylesheet' href='railroad-diagrams.css'>
 <script src='railroad-diagrams.js'></script>
 <body>
-<h1 id="Namespaces">Namespaces</h1>
+<h1 id="AST">AST</h1>
 <script>
-Diagram(Choice(0, Sequence(ZeroOrMore(NonTerminal("Namespace", {href:"#Namespace"}))))).addTo();
+Diagram(Choice(0, Sequence(ZeroOrMore(Choice(0, Sequence(NonTerminal("Namespace", {href:"#Namespace"}), ZeroOrMore(Choice(0, Sequence(NonTerminal("xs")), Sequence(NonTerminal("rs")))))))))).addTo();
 </script>
 
 <h1 id="Namespace">Namespace</h1>
 <script>
-Diagram(Choice(0, Sequence(ZeroOrMore(NonTerminal("xs")), NonTerminal("ident"), ZeroOrMore(NonTerminal("xs")), NonTerminal("Specification", {href:"#Specification"})), ZeroOrMore(NonTerminal("xs"))))).addTo();
+Diagram(Choice(0, Sequence(ZeroOrMore(NonTerminal("xs")), NonTerminal("ns"), ZeroOrMore(NonTerminal("xs")), NonTerminal("Definition", {href:"#Definition"})))).addTo();
 </script>
 
-<h1 id="Specification">Specification</h1>
+<h1 id="Definition">Definition</h1>
 <script>
-Diagram(Choice(0, Sequence(ZeroOrMore(NonTerminal("xs")), Optional(Choice(0, Sequence(Terminal("<"), ZeroOrMore(NonTerminal("xs")), Optional(Choice(0, Sequence(NonTerminal("Compose", {href:"#Compose"}), ZeroOrMore(NonTerminal("xs")), ZeroOrMore(Choice(0, Sequence(NonTerminal("fs"), ZeroOrMore(NonTerminal("xs")), NonTerminal("Compose", {href:"#Compose"}), ZeroOrMore(NonTerminal("xs")))))))), Terminal(">"), ZeroOrMore(NonTerminal("xs"))))), ZeroOrMore(NonTerminal("xs")), Optional(Choice(0, Sequence(Terminal("("), ZeroOrMore(NonTerminal("xs")), Optional(Choice(0, Sequence(NonTerminal("Subject", {href:"#Subject"}), ZeroOrMore(NonTerminal("xs")), ZeroOrMore(Choice(0, Sequence(NonTerminal("fs"), ZeroOrMore(NonTerminal("xs")), NonTerminal("Subject", {href:"#Subject"}), ZeroOrMore(NonTerminal("xs")))))))), Terminal(")"), ZeroOrMore(NonTerminal("xs"))))), ZeroOrMore(NonTerminal("xs")), Optional(Choice(0, Sequence(Terminal("{"), ZeroOrMore(NonTerminal("xs")), Optional(Choice(0, Sequence(NonTerminal("Mapping", {href:"#Mapping"}), ZeroOrMore(NonTerminal("xs")), ZeroOrMore(Choice(0, Sequence(ZeroOrMore(NonTerminal("rs")), ZeroOrMore(NonTerminal("xs")), NonTerminal("Mapping", {href:"#Mapping"}), ZeroOrMore(NonTerminal("xs")))))))), Terminal("}"), ZeroOrMore(NonTerminal("xs")))))))).addTo();
+Diagram(Choice(0, Sequence(Optional(Choice(0, Sequence(ZeroOrMore(NonTerminal("xs")), NonTerminal("co"), Optional(Choice(0, Sequence(NonTerminal("Composite", {href:"#Composite"}), ZeroOrMore(Choice(0, Sequence(ZeroOrMore(NonTerminal("xs")), NonTerminal("fs"), NonTerminal("Composite", {href:"#Composite"}))))))), ZeroOrMore(NonTerminal("xs")), NonTerminal("cc")))), Optional(Choice(0, Sequence(ZeroOrMore(NonTerminal("xs")), NonTerminal("po"), Optional(Choice(0, Sequence(NonTerminal("Parameter", {href:"#Parameter"}), ZeroOrMore(Choice(0, Sequence(ZeroOrMore(NonTerminal("xs")), NonTerminal("fs"), NonTerminal("Parameter", {href:"#Parameter"}))))))), ZeroOrMore(NonTerminal("xs")), NonTerminal("pc")))), Optional(Choice(0, Sequence(ZeroOrMore(NonTerminal("xs")), NonTerminal("so"), Optional(Choice(0, Sequence(NonTerminal("Statement", {href:"#Statement"}), ZeroOrMore(Choice(0, Sequence(ZeroOrMore(NonTerminal("xs")), NonTerminal("rs"), NonTerminal("Statement", {href:"#Statement"}))))))), ZeroOrMore(NonTerminal("xs")), NonTerminal("sc"))))))).addTo();
 </script>
 
-<h1 id="Compose">Compose</h1>
+<h1 id="Composite">Composite</h1>
 <script>
-Diagram(Choice(0, Sequence(ZeroOrMore(NonTerminal("xs")), NonTerminal("ident"), ZeroOrMore(NonTerminal("xs"))))).addTo();
+Diagram(Choice(0, Sequence(ZeroOrMore(NonTerminal("xs")), NonTerminal("ns")))).addTo();
 </script>
 
-<h1 id="Subject">Subject</h1>
+<h1 id="Parameter">Parameter</h1>
 <script>
-Diagram(Choice(0, Sequence(ZeroOrMore(NonTerminal("xs")), Choice(0, Sequence(NonTerminal("string")), Sequence(NonTerminal("ident"))), ZeroOrMore(NonTerminal("xs"))))).addTo();
+Diagram(Choice(0, Sequence(ZeroOrMore(NonTerminal("xs")), Choice(0, Sequence(NonTerminal("qq")), Sequence(NonTerminal("nu")), Sequence(NonTerminal("id")))))).addTo();
 </script>
 
-<h1 id="Mapping">Mapping</h1>
+<h1 id="Statement">Statement</h1>
 <script>
-Diagram(Choice(0, Sequence(ZeroOrMore(NonTerminal("xs")), NonTerminal("ident"), ZeroOrMore(NonTerminal("xs")), Optional(Terminal("?")), ZeroOrMore(NonTerminal("xs")), Choice(0, Sequence(Optional(Choice(0, Sequence(Terminal(":")), Sequence(Terminal("^")), Sequence(Terminal("+")))), Terminal("="))), ZeroOrMore(NonTerminal("xs")), NonTerminal("Expr", {href:"#Expr"}), ZeroOrMore(NonTerminal("xs"))))).addTo();
+Diagram(Choice(0, Sequence(ZeroOrMore(NonTerminal("xs")), NonTerminal("id"), ZeroOrMore(NonTerminal("xs")), NonTerminal("op"), ZeroOrMore(NonTerminal("xs")), NonTerminal("Expr", {href:"#Expr"})))).addTo();
 </script>
 
 </body>

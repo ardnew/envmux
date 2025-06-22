@@ -1,0 +1,45 @@
+// filepath: .vscode/settings.json
+{
+  "go.buildFlags": [
+    "-v",
+    "-gcflags=all='-N -l'"
+  ],
+
+  "go.diagnostic.vulncheck": "Imports",
+
+  "go.lintTool": "golangci-lint",
+  "go.lintOnSave": "workspace",
+  "go.lintFlags": [
+    "--config=.golangci.yml"
+  ],
+  "gopls": {
+    "build.buildFlags": [],
+    "formatting.local": "github.com/ardnew/envmux",
+    "ui.codelenses": {
+      "build": true,
+      "generate": true,
+      "run_govulncheck": true,
+      "test": true,
+      "tidy": true,
+      "upgrade_dependency": true,
+    },
+    "ui.diagnostic.analyses": {
+      "fieldalignment": false,
+      "nilness": true,
+      "shadow": true,
+      "staticcheck": true,
+      "structtag": false,
+      "unreachable": true,
+      "unsafemarshal": true,
+      "unsafemath": true,
+      "unsafeprop": true,
+      "unsafeptr": true,
+      "unsafeslice": true,
+      "unsafetype": true,
+      "unusedfunc": true,
+      "unusedparams": true,
+      "unusedwrite": true,
+      "useany": true,
+    },
+  },
+}

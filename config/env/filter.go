@@ -34,7 +34,8 @@ package env
 // 	return errors.Is(e.error, target)
 // }
 
-// type filterKeyFunc[T any] func(key string, exclude ...venv[T]) (string, error)
+// type filterKeyFunc[T any] func(key string, exclude ...venv[T]) (string,
+// error)
 
 // func uniqueKey[T any](key string, exclude ...venv[T]) (string, error) {
 // 	key = strings.TrimSpace(key)
@@ -85,7 +86,8 @@ package env
 // 	}
 // }
 
-// func (f filterKeyFunc[T]) with(include venv[T], exclude ...venv[T]) pkg.Option[venv[T]] {
+// func (f filterKeyFunc[T]) with(include venv[T], exclude ...venv[T])
+// pkg.Option[venv[T]] {
 // 	return func(env venv[T]) venv[T] {
 // 		if env == nil {
 // 			env = make(venv[T])

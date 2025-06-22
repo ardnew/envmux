@@ -1,8 +1,15 @@
+//nolint:gochecknoglobals
 package pkg
+
+import (
+	_ "embed"
+)
+
+//go:embed VERSION
+var Version string
 
 const (
 	Name        = "envmux"
-	Version     = "0.1.0"
 	Description = Name + " is a tool for managing environments."
 )
 

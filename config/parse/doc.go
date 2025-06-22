@@ -16,6 +16,7 @@
 // The parser is thread-safe and can be reused for multiple parsing operations.
 //
 // [parser]: https://github.com/alecthomas/participle
-// [lexical scanner]: https://github.com/alecthomas/participle#experimental---code-generation
+// [lexical scanner]:
+// https://github.com/alecthomas/participle#experimental---code-generation
 // [integrated expressions]: https://github.com/expr-lang/expr
 package parse

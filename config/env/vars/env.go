@@ -15,9 +15,9 @@ import (
 // Env maps identifiers to objects for evaluating expressions.
 type Env[T any] map[string]T
 
-// SubjectKey is the identifier used in expressions to refer to the subject
-// that is currently evaluating the environment.
-var SubjectKey = `_`
+// ParameterKey is the identifier used in expressions to refer to the implicit
+// parameter of the current expression evaluation.
+var ParameterKey = `_`
 
 // Cache returns a new copy of the current process environment.
 //
@@ -75,25 +75,32 @@ func WithContext(ctx context.Context) pkg.Option[Env[any]] {
 			v = Cache() // lazy-initialize the cache
 		} else if ctx == nil {
 			delete(v, ContextKey)
+
 			return v
 		}
+
 		v[ContextKey] = ctx
+
 		return v
 	}
 }
 
 func WithExports(env ...map[string]string) pkg.Option[Env[any]] {
 	add := map[string]any{}
+
 	for _, e := range env {
 		for key, val := range e {
 			add[key] = val
 		}
 	}
+
 	return func(v Env[any]) Env[any] {
 		if v.IsZero() {
 			v = Cache() // lazy-initialize the cache
 		}
+
 		maps.Insert(v, v.Complement(add))
+
 		return v
 	}
 }
@@ -103,7 +110,9 @@ func WithEach(seq iter.Seq2[string, any]) pkg.Option[Env[any]] {
 		if v.IsZero() {
 			v = Cache() // lazy-initialize the cache
 		}
+
 		maps.Insert(v, seq)
+
 		return v
 	}
 }
@@ -124,8 +133,10 @@ func (e Env[T]) Export(verb ...string) Env[string] {
 		for key, val := range e {
 			ss[key] = fmt.Sprintf(verb[0], val)
 		}
+
 		return ss
 	}
+
 	for key, val := range e {
 		switch v := any(val).(type) {
 		case string:
@@ -144,6 +155,7 @@ func (e Env[T]) Export(verb ...string) Env[string] {
 			ss[key] = fmt.Sprint(v)
 		}
 	}
+
 	return ss
 }
 
@@ -151,14 +163,17 @@ func (e Env[T]) Export(verb ...string) Env[string] {
 // in the format "key=value".
 func (e Env[T]) Environ() []string {
 	ss := make([]string, 0, len(e))
+
 	for key, val := range e.Export() {
 		var sb strings.Builder
+
 		sb.Grow(len(key) + len(val) + 1)
 		sb.WriteString(key)
 		sb.WriteRune('=')
 		sb.WriteString(val)
 		ss = append(ss, sb.String())
 	}
+
 	return ss
 }
 
@@ -178,6 +193,7 @@ func (e Env[T]) Complement(universe ...map[string]T) iter.Seq2[string, T] {
 				if _, reserved := e[key]; reserved {
 					continue
 				}
+
 				if !yield(key, val) {
 					return
 				}
@@ -192,6 +208,7 @@ func (e Env[T]) Omit(keys ...string) iter.Seq2[string, T] {
 			if slices.Contains(keys, key) {
 				continue
 			}
+
 			if !yield(key, val) {
 				return
 			}

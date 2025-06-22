@@ -6,7 +6,7 @@ import (
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
 
-	"github.com/ardnew/envmux/cli/model"
+	"github.com/ardnew/envmux/cmd/envmux/cli/cmd"
 	"github.com/ardnew/envmux/pkg"
 )
 
@@ -25,6 +25,7 @@ func resultErr(err error, code int) pkg.Option[Result] {
 	return func(r Result) Result {
 		r.Err = err
 		r.Code = code
+
 		return r
 	}
 }
@@ -33,13 +34,15 @@ func resultErr(err error, code int) pkg.Option[Result] {
 func resultHelp(help string) pkg.Option[Result] {
 	return func(r Result) Result {
 		r.Help = help
+
 		return r
 	}
 }
 
 // MakeResult creates a Result based on the given command and error.
-func MakeResult(mod model.Command, err error) Result {
-	resultUsage := resultHelp(ffhelp.Command(mod.Definition()).String())
+func MakeResult(node cmd.Node, err error) Result {
+	resultUsage := resultHelp(ffhelp.Command(node.Command()).String())
+
 	switch {
 	case err == nil:
 		return ResultOK

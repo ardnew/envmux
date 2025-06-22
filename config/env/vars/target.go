@@ -40,27 +40,32 @@ func GetTarget() Target {
 	case "mipsle":
 		t.Arch = "mipsel"
 	}
+
 	return t
 }
 
 // GetPlatform returns the [Target] with [Go conventions].
 //
-// [Go conventions]: https://cs.opensource.google/go/go/+/master:src/cmd/dist/build.go
+// [Go conventions]:
+// https://cs.opensource.google/go/go/+/master:src/cmd/dist/build.go
 func GetPlatform() Target {
 	var (
 		o, a string
 		ok   bool
 	)
+
 	if o, ok = os.LookupEnv("GOHOSTOS"); !ok {
 		if o, ok = os.LookupEnv("GOOS"); !ok {
 			o = runtime.GOOS
 		}
 	}
+
 	if a, ok = os.LookupEnv("GOHOSTARCH"); !ok {
 		if a, ok = os.LookupEnv("GOARCH"); !ok {
 			a = runtime.GOARCH
 		}
 	}
+
 	return Target{
 		OS:   o,
 		Arch: a,

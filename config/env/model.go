@@ -30,6 +30,7 @@ type Model struct {
 func WithAST(ast *parse.AST) pkg.Option[Model] {
 	return func(m Model) Model {
 		m.AST = ast
+
 		return m
 	}
 }
@@ -37,8 +38,9 @@ func WithAST(ast *parse.AST) pkg.Option[Model] {
 func (m Model) String() string {
 	e, err := json.Marshal(m)
 	if err != nil {
-		return fmt.Errorf("%w (Model): %w", pkg.ErrInvalidJSON, err).Error()
+		return pkg.JoinErrors(pkg.ErrInvalidJSON, err).Error()
 	}
+
 	return string(e)
 }
 
@@ -47,9 +49,23 @@ func (m Model) IsZero() bool { return m.AST == nil }
 func (m Model) Eval(
 	ctx context.Context, namespaces ...string,
 ) (vars.Env[string], error) {
+	env, err := m.eval(ctx, namespaces...)
+
+	return env.eval, err
+}
+
+type subjectEnv struct {
+	eval vars.Env[string]
+	subs []string
+}
+
+func (m Model) eval(
+	ctx context.Context, namespaces ...string,
+) (subjectEnv, error) {
 	if m.AST == nil {
-		return nil, fmt.Errorf(
-			"%w: %w", pkg.ErrInvalidModel, pkg.ErrIncompleteParse,
+		return subjectEnv{}, pkg.JoinErrors(
+			pkg.ErrInvalidModel,
+			pkg.ErrIncompleteParse,
 		)
 	}
 
@@ -59,20 +75,30 @@ func (m Model) Eval(
 		ctx, len(namespaces), namespaces, m.evalNamespace,
 	)
 	if err != nil {
-		return nil, err
+		return subjectEnv{}, err
 	}
 
-	env := vars.Env[string]{}
+	env := subjectEnv{
+		eval: vars.Env[string]{},
+		subs: make([]string, 0, len(envs)),
+	}
+
 	for _, ns := range envs {
-		if ns == nil {
+		if ns.eval == nil {
 			continue
 		}
-		maps.Copy(env, ns)
+
+		maps.Copy(env.eval, ns.eval)
+		env.subs = append(env.subs, ns.subs...)
 	}
+
 	return env, nil
 }
 
-func (m Model) evalNamespace(ctx context.Context, namespace string) (vars.Env[string], error) {
+func (m Model) evalNamespace(
+	ctx context.Context,
+	namespace string,
+) (subjectEnv, error) {
 	match := func(filtered *parse.Namespace) bool {
 		return isDefined(filtered) && filtered.Name == namespace
 	}
@@ -88,46 +114,59 @@ func (m Model) evalNamespace(ctx context.Context, namespace string) (vars.Env[st
 		// first add their evaluated environments to the current scope,
 		// then add their mappings to the current environment.
 		// This enables evaluation of nested namespaces with ancestor subjects.
-		eval := vars.Env[string]{}
-		if len(spec.Coms) > 0 {
+		env := subjectEnv{
+			eval: vars.Env[string]{},
+			subs: []string{},
+		}
+
+		if len(spec.Com) > 0 {
 			var err error
-			eval, err = m.Eval(ctx, slices.Collect(spec.Compositions())...)
+
+			env, err = m.eval(ctx, slices.Collect(spec.Compositions())...)
 			if err != nil {
-				return nil, err
+				return subjectEnv{}, err
 			}
 		}
 
 		// Evaluate mappings
-		subs := slices.Collect(spec.Subjects())
-		for _, dict := range spec.Maps {
-			v, err := m.evalMapping(ctx, dict, eval, subs)
+		subs := slices.Collect(spec.Parameters())
+		subs = append(subs, env.subs...)
+
+		for _, dict := range spec.Sta {
+			v, err := m.evalMapping(ctx, dict, env.eval, subs)
 			if err != nil {
-				return nil, err
+				return subjectEnv{}, err
 			}
-			maps.Copy(eval, v)
+
+			maps.Copy(env.eval, v)
 		}
-		return eval, nil
+
+		return env, nil
 	}
-	return nil, pkg.ErrInvalidNamespace
+
+	return subjectEnv{}, pkg.ErrInvalidNamespace
 }
 
 func collect(e vars.Env[any]) vars.Env[any] {
 	return maps.Collect(
 		pkg.FilterKeys(vars.Cache().Complement(e),
 			func(key string) bool {
-				return key != vars.ContextKey && key != vars.SubjectKey
+				return key != vars.ContextKey && key != vars.ParameterKey
 			},
 		),
 	)
 }
 
-// evalMapping evaluates a single mapping across all applicable subjects
+// evalMapping evaluates a single mapping across all applicable subjects.
 func (m Model) evalMapping(
-	ctx context.Context, dict *parse.Mapping, eval vars.Env[string], subs []string,
+	ctx context.Context,
+	dict *parse.Statement,
+	eval vars.Env[string],
+	subs []string,
 ) (vars.Env[string], error) {
 	env := pkg.Make(vars.WithContext(ctx), vars.WithExports(eval))
 
-	env[vars.SubjectKey] = "" // placeholder for compiler
+	env[vars.ParameterKey] = "" // placeholder for compiler
 
 	// We have to pass the environment to both [expr.Compile] and [expr.Run].
 	// The former builds type information for validating the latter.
@@ -138,15 +177,16 @@ func (m Model) evalMapping(
 	}
 
 	// Compile expression
-	program, err := expr.Compile(dict.Expr.Src, opt...)
+	program, err := expr.Compile(dict.Ex.Src, opt...)
 	if err != nil {
-		return nil, exprError(dict.Name, err)
+		return nil, exprError(dict.ID, err)
 	}
 
 	// Handle case with no subjects
 	if len(subs) == 0 {
 		subs = []string{""}
-		delete(env, vars.SubjectKey)
+
+		delete(env, vars.ParameterKey)
 	}
 
 	// Process each subject
@@ -156,7 +196,8 @@ func (m Model) evalMapping(
 			if val, err := strconv.Unquote(str); err == nil {
 				str = val
 			}
-			env[vars.SubjectKey] = str
+
+			env[vars.ParameterKey] = str
 		}
 
 		res, err := expr.Run(program, env.AsMap())
@@ -169,9 +210,7 @@ func (m Model) evalMapping(
 			str = val
 		}
 
-		env[dict.Name] = str
-
-		// fmt.Println(collect(env).Export())
+		env[dict.ID] = str
 	}
 
 	return collect(env).Export(), nil
@@ -182,7 +221,8 @@ func isDefined(ns *parse.Namespace) bool { return ns != nil && ns.Spec != nil }
 func exprError(name string, err error) error {
 	ferr := new(file.Error)
 	if errors.As(err, &ferr) {
-		return fmt.Errorf("%w(%s): %w", pkg.ErrInvalidExpression, name, err)
+		err = ferr
 	}
+
 	return fmt.Errorf("%w(%s): %w", pkg.ErrInvalidExpression, name, err)
 }

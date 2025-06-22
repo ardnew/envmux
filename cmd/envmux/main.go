@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/ardnew/envmux/cli"
+	"github.com/ardnew/envmux/cmd/envmux/cli"
 )
 
 // main is the entry point for the envmux application.

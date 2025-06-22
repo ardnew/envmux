@@ -3,6 +3,7 @@
 # │  While other shells may work fine as-is, this script was originally       │
 # │  written for targets assumed compatible with GNU bash, version 5.0.       │
 # └───────────────────────────────────────────────────────────────────────────┘
+#
 # This script generates a lexer for the configuration file parser.
 #  • Do NOT run this script directly!
 #    · It depends on env vars set by `go generate` (shown below).
@@ -10,8 +11,14 @@
 #    · When -> The lexer rules¹ have changed.
 #    · How² -> `go generate ./config/parse/...`
 #
-# [¹]: var LexerGenerator (defined in "config/parse/model.go")
-# [²]: Run this command from the module root directory (containing "go.mod").
+# ┌───── NOTE ────────────────────────────────────────────────────────────────┐
+# │  If the generator panics for any reason, the error message does not make  │
+# │  it through `gum` output. All it shows is a stack trace.                  │
+# │   • To see the error message, run this script with `DEBUG=1`.             │
+# └───────────────────────────────────────────────────────────────────────────┘
+#
+#  [¹]: var LexerGenerator (defined in "config/parse/model.go")
+#  [²]: Run this command from the module root directory (containing "go.mod").
 
 gen-rules() {
   "${go_bin_path}" run "${marshal_pkg_path}" "${lexer_rules_path}"
@@ -59,12 +66,14 @@ _init() {
   # thus, do not ever pass "_init" as the first argument to this script.
   # your PC will explode.
   declare -r status="generating lexer: ${lexer_out_path}"
-  ! gum=$( type -P gum ) ||
-    exec "${gum}" spin \
-      --title="${status}" \
-      --spinner="minidot" \
-      --show-output \
-      -- "${0}" "${@}"
+  if [[ "x${DEBUG:-}" == x ]]; then
+    ! gum=$( type -P gum ) ||
+      exec "${gum}" spin \
+        --title="${status}" \
+        --spinner="minidot" \
+        --show-output \
+        -- "${0}" "${@}"
+  fi
 
   echo "${status}"
   exec "${0}" "${@}"
