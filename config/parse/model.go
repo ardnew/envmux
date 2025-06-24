@@ -13,13 +13,13 @@ import (
 
 //nolint:gochecknoglobals
 var (
-	// XS matches comments and whitespace emitted to the parser.
+	// XX matches comments and whitespace emitted to the parser.
 	//
 	// These tokens are not included in the AST.
 	//
 	// This may change in the future to support semantic comments
 	// such as documentation, metadata, or runtime directives.
-	XS = `(?:/\*(?:[^*]|\*[^/])*\*/|(?://|#)[^\r\n]*\r?\n|\s+)`
+	XX = `(?:/\*(?:[^*]|\*[^/])*\*/|(?://|#)[^\r\n]*\r?\n|\s)`
 
 	// NS matches a namespace identifier.
 	//
@@ -28,7 +28,8 @@ var (
 	//
 	// Spaces are allowed within the identifier, but all surrounding
 	// whitespace is ignored implicitly by rule precedence.
-	NS = `[^(){}\[\]<>,;=\s]+(?: +[^(){}\[\]<>,;=\s]+)*`
+	ns = `[^(){}\[\]<>,;=\s]`
+	NS = ns + `+(?: +` + ns + `|` + ns + `)*`
 
 	// ID matches a conventional shell identifier.
 	//
@@ -90,10 +91,28 @@ var (
 	// [participle.Parseable].
 	//
 	// [expr-lang]: https://github.com/expr-lang/expr
-	EX = `\\.|.`
+	EX = `(?:\\.|.)?`
 
 	FS = `,` // FS matches a field separator.
 	RS = `;` // RS matches a record separator.
+
+	// AA matches any possibly-escaped non-whitespace symbol.
+	//
+	// Normally, it is an unrecoverable fatal error when the lexer encounters
+	// unrecognized symbols.
+	//
+	// This pattern enables the lexer to emit tokens to the parser that are not
+	// strictly recognized by its grammar and would otherwise fail to consume.
+	//
+	// This is useful for a few reasons:
+	//
+	//  - The parser can use these tokens to provide better errors/diagnostics.
+	//  - The parser can choose to accept these tokens in special cases.
+	//  - The parser can recover invalid input by ignoring or translating tokens.
+	AA = `[^\s]`
+
+	// EE is the escaped version of AA and is used to capture escape sequences.
+	EE = `\\` + AA
 )
 
 // LexerGenerator is used internally to generate lexer.go, which provides
@@ -116,40 +135,37 @@ var (
 var LexerGenerator = sync.OnceValue( //nolint:gochecknoglobals
 	func() *lexer.StatefulDefinition {
 		return lexer.MustStateful(lexer.Rules{
-			`Global`: {
-				{Name: `XS`, Pattern: XS, Action: nil},
-			},
-			`Ignore`: {
-				{Name: `RS`, Pattern: RS, Action: nil},
-			},
 			`Root`: {
-				lexer.Include(`Global`),
-				{Name: `NS`, Pattern: NS, Action: lexer.Push(`Definition`)},
-				lexer.Include(`Ignore`),
+				lexer.Include(`Elidable`),
+				{Name: `NS`, Pattern: NS, Action: lexer.Push(`Namespace`)},
 			},
-			`Definition`: {
-				lexer.Include(`Global`),
+
+			`Namespace`: {
+				lexer.Include(`Elidable`),
 				{Name: `CO`, Pattern: `<`, Action: lexer.Push(`Composite`)},
 				{Name: `PO`, Pattern: `\(`, Action: lexer.Push(`Parameter`)},
 				{Name: `SO`, Pattern: `{`, Action: lexer.Push(`Statement`)},
 				lexer.Return(),
 			},
+
 			`Composite`: {
-				lexer.Include(`Global`),
+				lexer.Include(`Elidable`),
 				{Name: `CC`, Pattern: `>`, Action: lexer.Pop()},
 				{Name: `FS`, Pattern: FS, Action: nil},
 				{Name: `NS`, Pattern: NS, Action: nil},
 			},
+
 			`Parameter`: {
-				lexer.Include(`Global`),
+				lexer.Include(`Elidable`),
 				{Name: `PC`, Pattern: `\)`, Action: lexer.Pop()},
 				{Name: `FS`, Pattern: FS, Action: nil},
 				{Name: `QQ`, Pattern: QQ, Action: nil},
 				{Name: `NU`, Pattern: NU, Action: nil},
 				{Name: `ID`, Pattern: ID, Action: nil},
 			},
+
 			`Statement`: {
-				lexer.Include(`Global`),
+				lexer.Include(`Elidable`),
 				{Name: `SO`, Pattern: `{`, Action: lexer.Push(`Statement`)},
 				{Name: `SC`, Pattern: `}`, Action: lexer.Pop()},
 				{Name: `RS`, Pattern: RS, Action: nil},
@@ -157,9 +173,42 @@ var LexerGenerator = sync.OnceValue( //nolint:gochecknoglobals
 				{Name: `OP`, Pattern: `=`, Action: nil},
 				{Name: `EX`, Pattern: EX, Action: nil},
 			},
+
+			`Elidable`:  {{Name: `XX`, Pattern: XX, Action: nil}},
+			`Printable`: {{Name: `AA`, Pattern: AA, Action: nil}},
+			`Escaped`:   {{Name: `EE`, Pattern: EE, Action: nil}},
 		})
 	},
 )
+
+// AST is the root node of the parsed configuration file.
+//
+// It consumes tokens from the `Root` state of the lexer.
+type AST struct {
+	Pos    lexer.Position // Pos records the start position of the node.
+	EndPos lexer.Position // EndPos records the end position of the node.
+	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
+
+	List []*Namespace `parser:"( @@ XX* )*"`
+}
+
+// Namespace associates a composition of environment variable definitions with
+// a namespace identifier. Variable definitions are expressed using the entire
+// [expr-lang] grammar.
+//
+// [expr-lang]: https://github.com/expr-lang/expr
+type Namespace struct {
+	Pos    lexer.Position // Pos records the start position of the node.
+	EndPos lexer.Position // EndPos records the end position of the node.
+	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
+
+	Name string       `parser:"XX* @NS"`
+	Def  string       `parser:"XX* ("`
+	Com  []*Composite `parser:"( XX* CO XX* ( @@ ( XX* FS @@ )* )? XX* CC )?"`
+	Par  []*Parameter `parser:"( XX* PO XX* ( @@ ( XX* FS @@ )* )? XX* PC )?"`
+	Sta  []*Statement `parser:"( XX* SO XX* ( @@   XX*          )* XX* SC )?"`
+	End  string       `parser:"XX* )!"`
+}
 
 // Composite represents a composition node in the AST.
 type Composite struct {
@@ -167,7 +216,7 @@ type Composite struct {
 	EndPos lexer.Position // EndPos records the end position of the node.
 	Tokens []lexer.Token  // Tokens records the tokens consumed by the node.
 
-	ID string `parser:"XS* @NS"`
+	ID string `parser:"@NS"`
 }
 
 // Parameter represents a parameter node in the AST.
@@ -176,15 +225,18 @@ type Parameter struct {
 	EndPos lexer.Position // EndPos records the end position of the node.
 	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
 
-	ID string `parser:"XS* @( QQ | NU | ID )"`
+	ID string `parser:"@( QQ | NU | ID )"`
 }
 
 // Statement represents a statement node in the AST.
+//
 // It assigns or amends value to a variable identifier in a namespace.
 // The value can be a literal or an evaluated expression.
+//
 // Expressions are evaluated in the context of the enclosing namespace
 // and the implicit parameter (identified with [vars.ParameterKey])
 // for each parameter to the namespace.
+//
 // Each parameter's evaluation is assigned to the variable based on the formal
 // syntax used by the parameter.
 type Statement struct {
@@ -192,40 +244,9 @@ type Statement struct {
 	EndPos lexer.Position // EndPos records the end position of the node.
 	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
 
-	ID string `parser:"XS* @ID"`
-	Op string `parser:"XS* @OP"`
-	Ex *Expr  `parser:"XS* @@"`
-}
-
-// Definition represents a namespace definition node in the AST.
-type Definition struct {
-	Pos    lexer.Position // Pos records the start position of the node.
-	EndPos lexer.Position // EndPos records the end position of the node.
-	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
-
-	Com []*Composite `parser:"( XS* CO ( @@ ( XS* FS @@ )* )? XS* CC )?"`
-	Par []*Parameter `parser:"( XS* PO ( @@ ( XS* FS @@ )* )? XS* PC )?"`
-	Sta []*Statement `parser:"( XS* SO ( @@ ( XS* RS @@ )* )? XS* SC )?"`
-}
-
-// Namespace associates a composition of environment variable definitions with
-// a namespace identifier.
-type Namespace struct {
-	Pos    lexer.Position // Pos records the start position of the node.
-	EndPos lexer.Position // EndPos records the end position of the node.
-	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
-
-	Name string      `parser:"XS* @NS"`
-	Spec *Definition `parser:"XS* @@!"`
-}
-
-// AST is the root node of the parsed configuration file.
-type AST struct {
-	Pos    lexer.Position // Pos records the start position of the node.
-	EndPos lexer.Position // EndPos records the end position of the node.
-	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
-
-	List []*Namespace `parser:"( @@ ( XS | RS )* )*"`
+	ID string `parser:"@ID"`
+	Op string `parser:"XX* @OP"`
+	Ex *Expr  `parser:"XX* @@"`
 }
 
 // Options are the default participle options used to build the parser.
@@ -247,27 +268,10 @@ func TraceOptions(w io.Writer) []participle.ParseOption {
 	return opt
 }
 
-// build returns a singleton parser for the AST type.
-//
-//nolint:gochecknoglobals
-var build = sync.OnceValue(
-	func() *participle.Parser[AST] {
-		return participle.MustBuild[AST](Options...)
-	},
-)
-
-// Grammar returns the grammar of the parser as a string in EBNF format.
-func Grammar() string { return build().String() }
-
-// Load parses the input reader and returns the AST.
-func Load(r io.Reader) (*AST, error) {
-	return build().Parse(pkg.Name, r, ParseOptions...)
-}
-
 // Compositions returns a sequence of unique namespace identifiers composing
-// the Definition.
+// the Namespace.
 // Duplicate names are removed; only the first occurrence is retained.
-func (s *Definition) Compositions() iter.Seq[string] {
+func (s *Namespace) Compositions() iter.Seq[string] {
 	if s == nil {
 		return nil
 	}
@@ -283,11 +287,11 @@ func (s *Definition) Compositions() iter.Seq[string] {
 	}
 }
 
-// Parameters returns a sequence of unique parameters from the [Definition]
+// Parameters returns a sequence of unique parameters from the [Namespace]
 // appended with the given arguments.
-// The additional names are appended to the definition's subjects.
+// The additional names are appended to the namespace's [Parameter] slice.
 // Duplicate names are removed; only the first occurrence is retained.
-func (s *Definition) Parameters(appends ...string) iter.Seq[string] {
+func (s *Namespace) Parameters(appends ...string) iter.Seq[string] {
 	if s == nil {
 		return nil
 	}
@@ -306,5 +310,29 @@ func (s *Definition) Parameters(appends ...string) iter.Seq[string] {
 				return
 			}
 		}
+	}
+}
+
+// build returns a singleton parser for the AST type.
+//
+//nolint:gochecknoglobals
+var build = sync.OnceValue(
+	func() *participle.Parser[AST] {
+		return participle.MustBuild[AST](Options...)
+	},
+)
+
+// EBNF returns the parser grammar as a string in Extended Backus-Naur Form.
+func EBNF() string { return build().String() }
+
+// Make returns a function that parses an [AST] from the provided [io.Reader].
+func Make(r io.Reader) func() (*AST, error) {
+	return func() (*AST, error) {
+		ast, err := build().Parse(pkg.Name, r, ParseOptions...)
+		if err != nil {
+			return nil, err
+		}
+
+		return ast, nil
 	}
 }

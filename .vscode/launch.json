@@ -36,8 +36,10 @@
       "program": "./cmd/envmux",
       "env": {},
       "args": [
+        "-j",
+        "1",
         "-S",
-        "default{x=1;};",
+        "default{x=1;y=2;} /* comment */\n",
       ],
       "cwd": "${workspaceFolder}",
       "stopOnEntry": false,
@@ -50,8 +52,10 @@
       "program": "./cmd/envmux",
       "env": {},
       "args": [
+        "-j",
+        "1",
         "-S",
-        "default {\n  foo = 1+2;\n}\n\nfoo<default> {\n  bar = 3+4;\n}\n",
+        "default {\n  foo = 1+2;\n}\n; foo<default> {\n  bar = 3+4;\n}\n",
         "foo"
       ],
       "cwd": "${workspaceFolder}",

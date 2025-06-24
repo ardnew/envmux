@@ -11,16 +11,17 @@ use IPC::Open2;
 use Getopt::Long qw(GetOptions);
 
 sub usage {
-  sprintf "Usage: %s [-d|--debug] [-n|--normalize] [-t|--transient] [-c|--testcase <num>]\n", basename($0)
+  sprintf "Usage: %s [-d|--debug] [-s|--short] [-n|--normalize] [-t|--transient] [-c|--testcase <num>]\n", basename($0)
 }
 
 # Parse command-line options.
 GetOptions(
   \our %opts,
   'debug|d!',
+  'short|s!',
   'normalize|n!',
   'transient|t!',
-  'testcase|c=i',
+  'testcase|c=s@',
 ) or die usage();
 
 # Determine relative paths/names from the module and command-line tool.
@@ -90,9 +91,13 @@ sub color {
     ? $rgb{$key} . $str . $rgb{rst}  # color with reset.
     : $rgb{$key};  # color without text.
 
-  if (defined $rep and exists $rgb{$rep}) {
+  if (defined $rep) {
     if (defined $pat) {
-      $out =~ s/($pat)/$rgb{$rep}${1}$rgb{$key}/g;
+      if (exists $rgb{$rep}) {
+        $out =~ s/(${pat})/${rgb{$rep}}${1}${rgb{$key}}/g;
+      } else {
+        $out =~ s/(${pat})/${rep}${rgb{$key}}/g;
+      }
     } else {
       $out .= $rgb{$rep};  # Append replacement color.
     }
@@ -105,10 +110,160 @@ sub color {
   $out
 }
 
-my $num = 0;
-print for map {
-  my ($ref, $fhi, $fho) = ($_, undef, undef);
+my ($id) = 0;
 
+#   ┌───────────┐
+#   │ TEST CASES │
+#   └───────────┘
+my (@test) = map { ${$_}{id} = ++$id; $_ } (
+  {
+    arg => [],
+    def => <<___,
+default{foo=1+2;}
+___
+  },
+  {
+    arg => [],
+    def => <<___,
+default { foo = 1+2; }
+___
+  },
+  {
+    arg => [],
+    def => <<___,
+default<>(){ foo = 1+2; }
+___
+  },
+  {
+    arg => [],
+    def => <<___,
+default()<>{ foo = 1+2; } /**** NO OUTPUT ****/
+___
+  },
+  {
+    arg => [],
+    def => <<___,
+default{ foo = 1+2; }()<>
+___
+  },
+  {
+    arg => [],
+    def => <<___,
+default <> () { foo = 1+2; } /* comment */
+___
+  },
+  {
+    arg => [],
+    def => <<___,
+default <> () { foo = 1+2; } // comment
+___
+  },
+  {
+    arg => [qw| custom |],
+    def => <<___,
+custom { foo = 1+2; } # comment
+___
+  },
+  {
+    arg => [],
+    def => <<___,
+// default <> () { foo = 1+2; }
+___
+  },
+  {
+    arg => [qw| custom |],
+    def => <<___,
+# custom { foo = 1+2; }
+___
+  },
+  {
+    arg => [],
+    def => <<___,
+default // <> () { foo = 1+2; }
+___
+  },
+  {
+    arg => [qw| custom |],
+    def => <<___,
+custom # { foo = 1+2; }
+___
+  },
+  {
+    arg => [],
+    def => <<___,
+default { foo /* comment */ = "abc"; }
+custom { /* comment */ foo = 1+2; }
+___
+  },
+  {
+    arg => [qw| custom |],
+    def => <<___,
+default /* comment */ { foo = "abc"; }
+/* comment */ custom { foo = 1+2; }
+___
+  },
+  {
+    arg => [],
+    def => <<___,
+default <custom> { foo = /* comment */ "abc"; }
+custom { foo = 1+2 /* comment */; }
+___
+  },
+  {
+    arg => [qw| custom |],
+    def => <<___,
+default { foo = "abc"; }
+custom <default> { foo = 1+2; /* comment */ }
+___
+  },
+  {
+    arg => [],
+    def => <<___,
+default <custom> { foo = "abc"; }
+custom { foo = 1+2; bar = "xyz"; }
+___
+  },
+  {
+    arg => [qw| custom |],
+    def => <<___,
+default { foo = "abc"; }
+custom <default> { foo = 1+2; bar = "xyz"; }
+___
+  },
+  {
+    arg => [],
+    def => <<___,
+default <custom> { foo = "abc"; bar = "xyz"; }
+custom { foo = 1+2; }
+___
+  },
+  {
+    arg => [qw| custom |],
+    def => <<___,
+default { foo = "abc"; bar = "xyz"; }
+custom <default> { foo = 1+2; }
+___
+  },
+  {
+    arg => [],
+    def => <<___,
+default <custom> { foo = "abc"; bar = 2+3; }
+custom { foo = 1+2; bar = "xyz"; }
+___
+  },
+  {
+    arg => [qw| custom |],
+    def => <<___,
+default { foo = "abc"; bar = 2+3; }
+custom <default> { foo = 1+2; bar = "xyz"; }
+___
+  },
+);
+
+@test = @test[map{ $_ - 1 } map { eval } @{$opts{'testcase'}}]
+  if exists $opts{'testcase'};
+
+foreach my $ref (@test) {
   die "invalid test case: $ref"
     unless ref($ref) eq 'HASH' and exists $ref->{'def'};
 
@@ -118,7 +273,9 @@ print for map {
 
   print $dbg;
 
-  my $pid = open2($fho, $fhi, "${bin} ${dbg}-s - @{arg} 2>&1") or die "$!\n";
+  my ($fhi, $fho);
+
+  my $pid = open2($fho, $fhi, "${bin} -j 1 ${dbg}-s - @{arg} 2>&1") or die "$!\n";
 
   $def = trim($def) if $opts{'normalize'};
 
@@ -157,11 +314,13 @@ print for map {
     [],
   );
 
-  my $lbl = color('num' => sprintf("%2d", exists $opts{'testcase'} ? $num : ++$num), 'box');
+  my $lbl = color('num' => sprintf("%2d", $ref->{'id'}), 'box');
   my $inp = color('i' => $sfi, 'box' => qr/│/, 'box');
   my $out = color(($err ? 'err' : 'o') => $sfo, 'box' => qr/│/, 'box');
 
-  sprintf <<EOF, $lbl, $hdr[0], $inp, $hdr[1], $out, $hdr[2];
+  my ($txt) = exists $opts{'short'}
+    ? sprintf("%s\n%s\n", $lbl, color(($err ? 'err' : 'o') => $res))
+    : sprintf(<<EOF, $lbl, $hdr[0], $inp, $hdr[1], $out, $hdr[2]);
 %s ┌─%s
 %s
    ├─%s
@@ -169,56 +328,6 @@ print for map {
    └─%s
 
 EOF
-} grep {
-  ( not exists $opts{'testcase'} ) || ++$num == $opts{'testcase'}
-} (
 
-#   ┌───────────┐
-#   │ TEST CASES │
-#   └───────────┘
-
-  {
-    arg => [],
-    def => <<___,
-default() {foo=1+2;}
-___
-  },
-  {
-    arg => [],
-    def => <<___,
-default() { foo = 1+2
-;
- };
-___
-  },
-  {
-    arg => [],
-    def => <<___,
-default() { foo = { 1+2; }; }
-___
-  },
-  {
-    arg => [],
-    def => <<___,
-
-default() {
-
-  foo =
-    1+2
-    ;
-
+  print $txt
 }
-___
-  },
-  {
-    arg => ['foo@bar'],
-    def => <<___,
-default {
-  foo = 1+2;
-}
-;;;;;;; foo\@bar <default> {
-  bar = 3+4;
-}
-___
-  },
-)

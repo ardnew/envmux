@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/peterbourgon/ff/v4"
@@ -14,7 +15,7 @@ import (
 	"github.com/ardnew/envmux/cmd/envmux/cli/cmd"
 	"github.com/ardnew/envmux/cmd/envmux/cli/cmd/root/fs"
 	"github.com/ardnew/envmux/cmd/envmux/cli/cmd/root/ns"
-	"github.com/ardnew/envmux/config"
+	"github.com/ardnew/envmux/config/env"
 	"github.com/ardnew/envmux/config/parse"
 	"github.com/ardnew/envmux/pkg"
 )
@@ -45,6 +46,21 @@ var (
 		NoPlaceholder: true,
 		NoDefault:     true,
 	}
+	reqDefFlag = ff.FlagConfig{
+		ShortName:     'd',
+		LongName:      `require-definitions`,
+		Usage:         `eval undef namespaces as runtime errors`,
+		NoPlaceholder: true,
+		NoDefault:     true,
+	}
+	maxJobsFlag = ff.FlagConfig{
+		ShortName:     'j',
+		LongName:      `jobs`,
+		Usage:         `maximum number of parallel eval jobs`,
+		Placeholder:   `N`,
+		NoPlaceholder: false,
+		NoDefault:     false,
+	}
 	configFlag = ff.FlagConfig{
 		ShortName:     'c',
 		LongName:      `config`,
@@ -65,7 +81,7 @@ var (
 		ShortName:     'S',
 		LongName:      `source`,
 		Usage:         `namespace source definitions`,
-		Placeholder:   `DEF`,
+		Placeholder:   `DEFS`,
 		NoPlaceholder: false,
 		NoDefault:     false,
 	}
@@ -76,6 +92,8 @@ type Root struct {
 
 	Version    bool
 	Verbose    bool
+	ReqDef     bool
+	MaxJobs    int
 	ConfigPath string
 	SourcePath string
 	SourceDef  []string
@@ -86,6 +104,8 @@ type Root struct {
 func (r Root) Init() cmd.Node {
 	r.Version = false
 	r.Verbose = false
+	r.ReqDef = false
+	r.MaxJobs = runtime.NumCPU()
 	r.ConfigPath = filepath.Join(cmd.ConfigDir(), configFlag.LongName)
 	r.SourcePath = filepath.Join(cmd.ConfigDir(), `default`)
 	r.SourceDef = []string{}
@@ -125,16 +145,19 @@ func (r Root) Init() cmd.Node {
 					parse.ParseOptions = parse.TraceOptions(os.Stderr)
 				}
 
-				cfg := pkg.Make(config.WithReader(read))
-				if cfg.Err() != nil {
-					return fmt.Errorf("%w: %w", pkg.ErrInvalidConfig, cfg.Err())
+				e, err := pkg.Make(
+					env.WithMaxParallelJobs(r.MaxJobs),
+					env.WithEvalRequiresDef(r.ReqDef),
+				).Parse(read)
+				if err != nil {
+					return fmt.Errorf("%w: %w", pkg.ErrInvalidConfig, err)
 				}
 
 				if len(args) == 0 {
 					args = pkg.DefaultNamespace
 				}
 
-				env, err := cfg.Eval(ctx, args...)
+				env, err := e.Eval(ctx, args...)
 				if err != nil {
 					return fmt.Errorf("%w: %w", pkg.ErrIncompleteEval, err)
 				}
@@ -149,6 +172,8 @@ func (r Root) Init() cmd.Node {
 		cmd.WithFlags(
 			pkg.Wrap(versionFlag, cmd.WithFlagConfig(&r.Version)),
 			pkg.Wrap(verboseFlag, cmd.WithIncFlagConfig(&r.Verbose, &r.verboseLevel)),
+			pkg.Wrap(reqDefFlag, cmd.WithFlagConfig(&r.ReqDef)),
+			pkg.Wrap(maxJobsFlag, cmd.WithFlagConfig(&r.MaxJobs)),
 			pkg.Wrap(configFlag, cmd.WithFlagConfig(&r.ConfigPath)),
 			pkg.Wrap(sourceFlag, cmd.WithFlagConfig(&r.SourcePath)),
 			pkg.Wrap(defineFlag, cmd.WithRepFlagConfig(&r.SourceDef)),

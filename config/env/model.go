@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
+	"runtime"
 	"slices"
 	"strconv"
 
@@ -18,8 +20,27 @@ import (
 	"github.com/ardnew/envmux/pkg"
 )
 
+// Model is an environment model that can be used to evaluate namespaced
+// environments with complex expressions from a custom file format.
 type Model struct {
 	*parse.AST `json:"namespaces"`
+
+	// Maximum number of jobs that may be run simultaneously.
+	MaxParallelJobs int `json:"jobs,omitempty"`
+
+	// Whether the model requires all namespaces be defined for evaluation.
+	EvalRequiresDef bool `json:"requires,omitempty"`
+}
+
+// Parse reads a namespace definition from the given [io.Reader] and returns a
+// [Model] that can be used to evaluate constructed environments.
+func (m Model) Parse(r io.Reader) (Model, error) {
+	ast, err := parse.Make(r)()
+	if err != nil {
+		return Model{}, err
+	}
+
+	return pkg.Make(WithAST(ast)), nil
 }
 
 // WithAST is a functional [pkg.Option] that installs the namespace
@@ -30,6 +51,29 @@ type Model struct {
 func WithAST(ast *parse.AST) pkg.Option[Model] {
 	return func(m Model) Model {
 		m.AST = ast
+
+		return m
+	}
+}
+
+// WithMaxParallelJobs is a functional [pkg.Option] that sets the maximum
+// number of parallel jobs to run when evaluating the environment.
+//
+// The default number of jobs is equal to the number of CPU cores available.
+// A value of 0 means to use the default number of jobs.
+func WithMaxParallelJobs(n int) pkg.Option[Model] {
+	return func(m Model) Model {
+		m.MaxParallelJobs = n
+
+		return m
+	}
+}
+
+// WithEvalRequiresDef is a functional [pkg.Option] that sets whether the
+// model requires all namespaces to be defined for evaluation.
+func WithEvalRequiresDef(b bool) pkg.Option[Model] {
+	return func(m Model) Model {
+		m.EvalRequiresDef = b
 
 		return m
 	}
@@ -49,7 +93,11 @@ func (m Model) IsZero() bool { return m.AST == nil }
 func (m Model) Eval(
 	ctx context.Context, namespaces ...string,
 ) (vars.Env[string], error) {
-	env, err := m.eval(ctx, namespaces...)
+	s := slices.Collect(pkg.Filter(slices.Values(namespaces),
+		func(ns string) bool { return ns != "" },
+	))
+
+	env, err := m.eval(ctx, s...)
 
 	return env.eval, err
 }
@@ -62,6 +110,10 @@ type subjectEnv struct {
 func (m Model) eval(
 	ctx context.Context, namespaces ...string,
 ) (subjectEnv, error) {
+	if len(namespaces) == 0 {
+		return subjectEnv{}, nil
+	}
+
 	if m.AST == nil {
 		return subjectEnv{}, pkg.JoinErrors(
 			pkg.ErrInvalidModel,
@@ -69,30 +121,58 @@ func (m Model) eval(
 		)
 	}
 
-	// Evaluate all namespaces in parallel,
-	// returning a slice of fully-evaluated environments.
-	envs, err := flowmatic.Map(
-		ctx, len(namespaces), namespaces, m.evalNamespace,
-	)
-	if err != nil {
-		return subjectEnv{}, err
+	maxJobs := min(len(namespaces), runtime.NumCPU())
+	if m.MaxParallelJobs <= 0 {
+		m.MaxParallelJobs = maxJobs
 	}
+
+	maxJobs = min(m.MaxParallelJobs, maxJobs)
 
 	env := subjectEnv{
 		eval: vars.Env[string]{},
-		subs: make([]string, 0, len(envs)),
+		subs: []string{},
 	}
 
-	for _, ns := range envs {
-		if ns.eval == nil {
-			continue
-		}
+	// If we have only one job, run the evaluations serially in this goroutine
+	// and don't fan out additional goroutines.
+	if m.MaxParallelJobs == 1 {
+		for _, ns := range namespaces {
+			e, err := m.evalNamespace(ctx, ns)
+			if err != nil {
+				return subjectEnv{}, err
+			}
 
-		maps.Copy(env.eval, ns.eval)
-		env.subs = append(env.subs, ns.subs...)
+			env = pkg.Wrap(env, export(e))
+		}
+	} else {
+		// Evaluate all namespaces in parallel,
+		// returning a slice of fully-evaluated environments.
+		for group := range slices.Chunk(namespaces, maxJobs) {
+			envs, err := flowmatic.Map(ctx, len(group), group, m.evalNamespace)
+			if err != nil {
+				return subjectEnv{}, err
+			}
+
+			env = pkg.Wrap(env, export(envs...))
+		}
 	}
 
 	return env, nil
+}
+
+func export(sub ...subjectEnv) pkg.Option[subjectEnv] {
+	return func(env subjectEnv) subjectEnv {
+		for _, e := range sub {
+			if e.eval == nil {
+				continue
+			}
+
+			maps.Copy(env.eval, e.eval)
+			env.subs = append(env.subs, e.subs...)
+		}
+
+		return env
+	}
 }
 
 func (m Model) evalNamespace(
@@ -107,9 +187,7 @@ func (m Model) evalNamespace(
 	// even if multiple namespaces with the given name exist.
 	// The first namespace found will be used to evaluate the environment.
 	// If the given namespace is not found, it will return an error.
-	for parsed := range pkg.Filter(slices.Values(m.List), match) {
-		spec := parsed.Spec
-
+	for space := range pkg.Filter(slices.Values(m.List), match) {
 		// If the namespace is composed of other namespaces,
 		// first add their evaluated environments to the current scope,
 		// then add their mappings to the current environment.
@@ -119,20 +197,20 @@ func (m Model) evalNamespace(
 			subs: []string{},
 		}
 
-		if len(spec.Com) > 0 {
+		if len(space.Com) > 0 {
 			var err error
 
-			env, err = m.eval(ctx, slices.Collect(spec.Compositions())...)
+			env, err = m.eval(ctx, slices.Collect(space.Compositions())...)
 			if err != nil {
 				return subjectEnv{}, err
 			}
 		}
 
 		// Evaluate mappings
-		subs := slices.Collect(spec.Parameters())
+		subs := slices.Collect(space.Parameters())
 		subs = append(subs, env.subs...)
 
-		for _, dict := range spec.Sta {
+		for _, dict := range space.Sta {
 			v, err := m.evalMapping(ctx, dict, env.eval, subs)
 			if err != nil {
 				return subjectEnv{}, err
@@ -144,7 +222,15 @@ func (m Model) evalNamespace(
 		return env, nil
 	}
 
-	return subjectEnv{}, pkg.ErrInvalidNamespace
+	if m.EvalRequiresDef {
+		return subjectEnv{}, fmt.Errorf(
+			"%w: %q is undefined",
+			pkg.ErrInvalidNamespace,
+			namespace,
+		)
+	}
+
+	return subjectEnv{}, nil
 }
 
 func collect(e vars.Env[any]) vars.Env[any] {
@@ -216,7 +302,7 @@ func (m Model) evalMapping(
 	return collect(env).Export(), nil
 }
 
-func isDefined(ns *parse.Namespace) bool { return ns != nil && ns.Spec != nil }
+func isDefined(ns *parse.Namespace) bool { return ns != nil }
 
 func exprError(name string, err error) error {
 	ferr := new(file.Error)
