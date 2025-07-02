@@ -1,0 +1,16 @@
+*.log
+*.tmp
+*.cache
+*.pid
+*.bak
+*.swp
+*.orig
+*.trace
+*.out
+
+*.pprof
+
+/*.txt
+/*.svg
+
+/envmux

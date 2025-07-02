@@ -1,1 +1,6 @@
 /envmux
+.envmux
+
+/*.out
+/*.txt
+/*.svg
