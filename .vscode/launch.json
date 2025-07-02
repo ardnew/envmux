@@ -45,7 +45,7 @@
       "env": {},
       "args": [
         "-p",
-        "trace=prof.trace",
+        "trace=.",
         "-j",
         "1",
         "-s",

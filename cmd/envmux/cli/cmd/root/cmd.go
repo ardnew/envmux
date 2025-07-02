@@ -156,7 +156,7 @@ func (r Root) Init() cmd.Node { //nolint:ireturn
 				LongHelp:  longHelp,
 			},
 			func(ctx context.Context, args []string) error {
-				defer prof.Init(args...).Stop()
+				defer prof.Init(r.Profile...).Stop()
 
 				if r.Version {
 					fmt.Println(ID, "version", pkg.Version)

@@ -60,6 +60,10 @@ func (c control) start(args ...string) interface{ Stop() } {
 		c.mode = append(c.mode, profile.ProfilePath(c.path))
 	}
 
+	if len(c.mode) == 0 {
+		return ignore{}
+	}
+
 	return profile.Start(c.mode...)
 }
 
@@ -87,3 +91,7 @@ func withhPath(path string) pkg.Option[control] {
 		return c
 	}
 }
+
+type ignore struct{}
+
+func (ignore) Stop() {}
