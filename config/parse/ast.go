@@ -4,6 +4,7 @@ import (
 	"io"
 	"strconv"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/alecthomas/participle/v2"
 	"github.com/alecthomas/participle/v2/lexer"
@@ -127,6 +128,7 @@ var (
 	//
 	// Any string at all will suffice — "nevermatch" is used for readability.
 	Z0 = `nevermatch\A`
+	ZZ = string(utf8.RuneError)
 )
 
 // LexerGenerator is used internally to generate lexer.go, which provides

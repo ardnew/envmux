@@ -11,6 +11,7 @@ import (
 )
 
 // Run executes the root command and returns the result.
+// Entry point for the CLI application.
 func Run() RunError {
 	node := root.Init()
 

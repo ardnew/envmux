@@ -44,7 +44,7 @@ func (e *Expression) Parse(lex *lexer.PeekingLexer) (err error) {
 func (e *Expression) parse(lex *lexer.PeekingLexer) (string, error) {
 	var sb strings.Builder
 
-	err := makeBracketParser(lex, compositeBracket)(
+	err := makeBracketParser(lex, bracketComposite)(
 		func(token *lexer.Token, depth int) (terminate, error) {
 			var result terminate
 

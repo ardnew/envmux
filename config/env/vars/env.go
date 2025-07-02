@@ -20,42 +20,35 @@ type Env[T any] map[string]T
 // parameter of the current expression evaluation.
 var ParameterKey = `_` //nolint:gochecknoglobals
 
-// Cache returns a new copy of the current process environment.
+// Cache returns the process environment cache.
 //
-// The values in the returned map contain structured data,
-// as opposed to simple strings like conventional environment variables.
-//
-// Users can access structured map data by key (or, for structs: field name)
-// as identifiers within any parsed expression.
-//
-// Nested data is accessed using either map or struct notation
-// (e.g., `user.Name` == `user["Name"]`).
-//
-// The process environment is only accessible during expression evaluation.
-// It is not exported to the final environment variables of a namespace.
-//
-// The environment content is constructed only once
-// and written to a volatile, in-memory cache.
-//
-// The cached process environment is immutable
-// and is independent of all user/namespace configurations.
+// Returns a copy to prevent modification of the singleton.
 func Cache() Env[any] {
-	// We only want to construct the environment once because it is expensive.
-	env := sync.OnceValue(func() Env[any] {
-		return Env[any]{
-			"target":   getTarget(),
-			"platform": getPlatform(),
-			"hostname": getHostname(),
-			"user":     getUser(),
-			"shell":    getShell(),
-		}
-	})
-
-	// But since maps are reference types, we always return a clone (deep copy).
-	// This prevents the caller modifying the cached singleton,
-	// and it avoids the cost of re-evaluating the environment.
-	return maps.Clone(env())
+	// Use sync.Once with a private variable to store the singleton
+	// instead of recreating the map on each call
+	return maps.Clone(envCache())
 }
+
+// Private singleton cache.
+//
+//nolint:gochecknoglobals
+var (
+	envCacheOnce sync.Once
+	envCacheVal  Env[any]
+	envCache     = func() Env[any] {
+		envCacheOnce.Do(func() {
+			envCacheVal = Env[any]{
+				"target":   getTarget(),
+				"platform": getPlatform(),
+				"hostname": getHostname(),
+				"user":     getUser(),
+				"shell":    getShell(),
+			}
+		})
+
+		return envCacheVal
+	}
+)
 
 // ContextKey is the identifier used by [github.com/expr-lang/expr] internally
 // to manage the evaluation [context.Context] of expressions.

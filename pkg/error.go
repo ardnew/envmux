@@ -164,18 +164,19 @@ type ExpressionError struct {
 }
 
 func (e *ExpressionError) Error() string {
-	var sp, id, tx string
+	var pp, id, ap string
 	if e.NS != "" {
 		id = fmt.Sprintf(" (expression %q in namespace %q)", e.Var, e.NS)
 	}
 
 	ee, ue := e.Err, new(file.Error)
 	if errors.As(e.Err, &ue) {
-		ee, sp = errors.New(ue.Message), fmt.Sprintf("[%d:%d]", ue.Line, ue.Column)
-		tx = "\t" + strings.ReplaceAll(ue.Snippet, "\n", "\n\t")
+		ee = fmt.Errorf("%w: %s", ErrInvalidExpression, ue.Message)
+		pp = fmt.Sprintf("[%d:%d]", ue.Line, ue.Column)
+		ap = "\t" + strings.ReplaceAll(ue.Snippet, "\n", "\n\t")
 	}
 
-	return fmt.Sprintf("%s: [%T] %v%s%s", sp, ee, ee, id, tx)
+	return fmt.Sprintf("%s: %v%s%s", pp, ee, id, ap)
 }
 
 type UnexpectedTokenError struct {

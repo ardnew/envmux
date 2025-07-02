@@ -10,42 +10,55 @@ import (
 )
 
 type (
+	bracketType   byte
 	bracket       struct{ open, close string }
 	bracketParser func(next func(*lexer.Token, int) (terminate, error)) error
 )
 
-//nolint:gochecknoglobals
-var (
-	compositeBracket = bracket{open: co, close: cc}
-	statementBracket = bracket{open: so, close: sc}
-	parameterBracket = bracket{open: po, close: pc}
-	aggregateBracket = bracket{open: ao, close: ac}
+const (
+	bracketUndefined bracketType = iota
+	bracketComposite
+	bracketStatement
+	bracketParameter
+	bracketAggregate
 )
 
-func (b bracket) isClosedBy(token string) bool { return b.close == token }
-
-func isOpeningBracket(token string) (bracket, bool) {
-	switch token {
-	case compositeBracket.open:
-		return compositeBracket, true
-	case statementBracket.open:
-		return statementBracket, true
-	case aggregateBracket.open:
-		return aggregateBracket, true
-	case parameterBracket.open:
-		return parameterBracket, true
-	default:
-		return bracket{}, false //nolint:exhaustruct
+func (b bracketType) get() bracket {
+	if b <= bracketUndefined || int(b) >= len(brackets) {
+		return brackets[bracketUndefined]
 	}
+
+	return brackets[b]
+}
+func (b bracketType) open() string  { return b.get().open }
+func (b bracketType) close() string { return b.get().close }
+
+//nolint:gochecknoglobals
+var brackets = []bracket{
+	{open: ZZ, close: ZZ}, // Undefined
+	{open: co, close: cc}, // Composite
+	{open: so, close: sc}, // Statement
+	{open: po, close: pc}, // Parameter
+	{open: ao, close: ac}, // Aggregate
+}
+
+func isOpeningBracket(token string) (bracketType, bool) {
+	for i := range brackets[bracketUndefined+1:] {
+		b := bracketType(i)
+		if b.open() == token {
+			return b, true
+		}
+	}
+
+	return bracketUndefined, false
 }
 
 func isClosingBracket(token string) bool {
-	switch token {
-	case compositeBracket.close,
-		statementBracket.close,
-		parameterBracket.close,
-		aggregateBracket.close:
-		return true
+	for i := range brackets[bracketUndefined+1:] {
+		b := bracketType(i)
+		if b.close() == token {
+			return true
+		}
 	}
 
 	return false
@@ -65,10 +78,10 @@ func isClosingBracket(token string) bool {
 // being the second phase.
 func makeBracketParser(
 	lex *lexer.PeekingLexer,
-	except ...bracket,
+	except ...bracketType,
 ) bracketParser {
 	return func(next func(*lexer.Token, int) (terminate, error)) error {
-		stack := []bracket{}
+		stack := []bracketType{}
 
 		var tok *lexer.Token
 
@@ -102,7 +115,7 @@ func makeBracketParser(
 						Tok: tok,
 						Msg: []string{
 							`expected close-bracket ` + strconv.Quote(
-								stack[len(stack)-1].close,
+								stack[len(stack)-1].get().close,
 							),
 						},
 					}
@@ -124,33 +137,25 @@ func makeBracketParser(
 
 			case rhs:
 				if len(stack) > 0 {
-					if stack[len(stack)-1].isClosedBy(tok.Value) {
+					if stack[len(stack)-1].get().close == tok.Value {
 						stack = stack[:len(stack)-1] // Pop
 					} else {
 						return &pkg.UnexpectedTokenError{
 							Tok: tok,
-							Msg: []string{`expected close-bracket ` + strconv.Quote(stack[len(stack)-1].close)},
+							Msg: []string{
+								`expected close-bracket ` + strconv.Quote(
+									stack[len(stack)-1].get().close,
+								),
+							},
 						}
 					}
 				} else {
+					//nolint:exhaustruct
 					return &pkg.UnexpectedTokenError{
 						Tok: tok,
 					}
 				}
 			}
 		}
-		// If we have consumed all input without satisfying the stop condition,
-		// then we have incomplete input.
-		//
-		//	if len(stack) > 0 {
-		//		return &pkg.UnexpectedTokenError{
-		//			Tok: tok,
-		// 			Msg: []string{`expected close-bracket ` +
-		// strconv.Quote(stack[len(stack)-1].close)},
-		//		}
-		//	}
-		//
-		// If we reach here, we have consumed all input with an empty stack.
-		// return nil
 	}
 }

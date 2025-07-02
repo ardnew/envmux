@@ -6,6 +6,7 @@ import (
 	"regexp"
 )
 
+//nolint:gochecknoglobals
 var (
 
 	// InlineSourcePrefix is used as a prefix for command-line arguments to the
@@ -23,11 +24,15 @@ var (
 )
 
 // SourceFile is the default file(s) containing namespace definitions.
+//
+//nolint:gochecknoglobals
 var SourceFile = func(cmd string) []string {
 	return []string{filepath.Join(ConfigDir(cmd), "default")}
 }
 
 // Namespace is the default namespace(s) used for evaluation.
+//
+//nolint:gochecknoglobals
 var Namespace = func() []string {
 	return []string{`default`}
 }
@@ -40,6 +45,8 @@ var Namespace = func() []string {
 //
 //   - "__debug_bin" (default output of the dlv debugger): replaced with [ID]
 //   - "^\.+" (dot-prefixed names): remove the dot prefix
+//
+//nolint:gochecknoglobals
 var ConfigPrefix = func(cmd string) string {
 	id := os.Args[0]
 	if exe, err := os.Executable(); err == nil {
@@ -76,6 +83,8 @@ var ConfigPrefix = func(cmd string) string {
 //
 // Otherwise, none of these directories can be determined,
 // and `filepath.Join(".", ConfigPrefix())` is returned.
+//
+//nolint:gochecknoglobals
 var ConfigDir = func(cmd string) string {
 	root, ok := os.LookupEnv("XDG_CONFIG_HOME")
 	if !ok {

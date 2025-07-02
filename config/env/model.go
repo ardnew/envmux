@@ -18,8 +18,8 @@ import (
 	"github.com/ardnew/envmux/pkg"
 )
 
-// Model is an environment model that can be used to evaluate namespaced
-// environments with complex expressions from a custom file format.
+// Model evaluates namespaced environments with expression support.
+// Parses and evaluates environment definitions from a custom file format.
 type Model struct {
 	*parse.AST `json:"namespaces"`
 

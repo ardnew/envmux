@@ -8,6 +8,7 @@ linters:
     - nonamedreturns
     - varnamelen
     - wrapcheck
+    - forbidigo
   exclusions:
     generated: strict
     warn-unused: true
@@ -18,7 +19,7 @@ linters:
       - legacy
     rules:
       - path: config/parse/model.go
-        text: "bad syntax for struct tag pair"
+        text: bad syntax for struct tag pair
         linters:
           - govet
       - path: config/parse/internal/lexer/main.go
