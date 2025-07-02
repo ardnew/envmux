@@ -1,3 +1,5 @@
+// Package vars provides definitions for environment variables derived from
+// the process environment and other system information.
 package vars
 
 import (

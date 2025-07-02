@@ -1,3 +1,5 @@
+// Package env defines an environment model that can parse and evaluate
+// namespaced variables defined with complex expressions.
 package env
 
 import (
