@@ -3,7 +3,6 @@ package env
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/carlmjohnson/flowmatic"
 	"github.com/expr-lang/expr"
-	"github.com/expr-lang/expr/file"
 
 	"github.com/ardnew/envmux/config/env/vars"
 	"github.com/ardnew/envmux/config/parse"
@@ -102,23 +100,16 @@ func (m Model) Eval(
 	return env.eval, err
 }
 
-type subjectEnv struct {
+type parameterEnv struct {
 	eval vars.Env[string]
-	subs []string
+	pars []string
 }
 
 func (m Model) eval(
 	ctx context.Context, namespaces ...string,
-) (subjectEnv, error) {
+) (parameterEnv, error) {
 	if len(namespaces) == 0 {
-		return subjectEnv{}, nil
-	}
-
-	if m.AST == nil {
-		return subjectEnv{}, pkg.JoinErrors(
-			pkg.ErrInvalidModel,
-			pkg.ErrIncompleteParse,
-		)
+		return parameterEnv{}, nil //nolint:exhaustruct
 	}
 
 	maxJobs := min(len(namespaces), runtime.NumCPU())
@@ -128,9 +119,9 @@ func (m Model) eval(
 
 	maxJobs = min(m.MaxParallelJobs, maxJobs)
 
-	env := subjectEnv{
+	env := parameterEnv{
 		eval: vars.Env[string]{},
-		subs: []string{},
+		pars: []string{},
 	}
 
 	// If we have only one job, run the evaluations serially in this goroutine
@@ -139,7 +130,7 @@ func (m Model) eval(
 		for _, ns := range namespaces {
 			e, err := m.evalNamespace(ctx, ns)
 			if err != nil {
-				return subjectEnv{}, err
+				return parameterEnv{}, err
 			}
 
 			env = pkg.Wrap(env, export(e))
@@ -150,7 +141,7 @@ func (m Model) eval(
 		for group := range slices.Chunk(namespaces, maxJobs) {
 			envs, err := flowmatic.Map(ctx, len(group), group, m.evalNamespace)
 			if err != nil {
-				return subjectEnv{}, err
+				return parameterEnv{}, err
 			}
 
 			env = pkg.Wrap(env, export(envs...))
@@ -160,15 +151,15 @@ func (m Model) eval(
 	return env, nil
 }
 
-func export(sub ...subjectEnv) pkg.Option[subjectEnv] {
-	return func(env subjectEnv) subjectEnv {
+func export(sub ...parameterEnv) pkg.Option[parameterEnv] {
+	return func(env parameterEnv) parameterEnv {
 		for _, e := range sub {
 			if e.eval == nil {
 				continue
 			}
 
 			maps.Copy(env.eval, e.eval)
-			env.subs = append(env.subs, e.subs...)
+			env.pars = append(env.pars, e.pars...)
 		}
 
 		return env
@@ -178,42 +169,42 @@ func export(sub ...subjectEnv) pkg.Option[subjectEnv] {
 func (m Model) evalNamespace(
 	ctx context.Context,
 	namespace string,
-) (subjectEnv, error) {
+) (parameterEnv, error) {
 	match := func(filtered *parse.Namespace) bool {
-		return isDefined(filtered) && filtered.Name == namespace
+		return isDefined(filtered) && filtered.ID == namespace
 	}
 
 	// This loop will iterate at maximum one time,
 	// even if multiple namespaces with the given name exist.
 	// The first namespace found will be used to evaluate the environment.
 	// If the given namespace is not found, it will return an error.
-	for space := range pkg.Filter(slices.Values(m.List), match) {
+	for space := range pkg.Filter(slices.Values(m.Defs.List), match) {
 		// If the namespace is composed of other namespaces,
 		// first add their evaluated environments to the current scope,
 		// then add their mappings to the current environment.
-		// This enables evaluation of nested namespaces with ancestor subjects.
-		env := subjectEnv{
+		// This enables evaluation of nested namespaces with ancestor parameters.
+		env := parameterEnv{
 			eval: vars.Env[string]{},
-			subs: []string{},
+			pars: []string{},
 		}
 
-		if len(space.Com) > 0 {
+		if len(space.Com.List) > 0 {
 			var err error
 
-			env, err = m.eval(ctx, slices.Collect(space.Compositions())...)
+			env, err = m.eval(ctx, slices.Collect(space.Com.Seq())...)
 			if err != nil {
-				return subjectEnv{}, err
+				return parameterEnv{}, err
 			}
 		}
 
-		// Evaluate mappings
-		subs := slices.Collect(space.Parameters())
-		subs = append(subs, env.subs...)
+		// Collect the parameters from the namespace and the environment.
+		pars := slices.Concat(slices.Collect(space.Par.Seq()), env.pars)
 
-		for _, dict := range space.Sta {
-			v, err := m.evalMapping(ctx, dict, env.eval, subs)
+		// Evaluate mappings
+		for _, dict := range space.Sta.List {
+			v, err := m.evalMapping(ctx, space, dict, env.eval, pars)
 			if err != nil {
-				return subjectEnv{}, err
+				return parameterEnv{}, err
 			}
 
 			maps.Copy(env.eval, v)
@@ -223,14 +214,14 @@ func (m Model) evalNamespace(
 	}
 
 	if m.EvalRequiresDef {
-		return subjectEnv{}, fmt.Errorf(
+		return parameterEnv{}, fmt.Errorf(
 			"%w: %q is undefined",
 			pkg.ErrInvalidNamespace,
 			namespace,
 		)
 	}
 
-	return subjectEnv{}, nil
+	return parameterEnv{}, nil //nolint:exhaustruct
 }
 
 func collect(e vars.Env[any]) vars.Env[any] {
@@ -243,12 +234,13 @@ func collect(e vars.Env[any]) vars.Env[any] {
 	)
 }
 
-// evalMapping evaluates a single mapping across all applicable subjects.
+// evalMapping evaluates a single mapping across all applicable parameters.
 func (m Model) evalMapping(
 	ctx context.Context,
+	space *parse.Namespace,
 	dict *parse.Statement,
 	eval vars.Env[string],
-	subs []string,
+	pars []string,
 ) (vars.Env[string], error) {
 	env := pkg.Make(vars.WithContext(ctx), vars.WithExports(eval))
 
@@ -265,20 +257,22 @@ func (m Model) evalMapping(
 	// Compile expression
 	program, err := expr.Compile(dict.Ex.Src, opt...)
 	if err != nil {
-		return nil, exprError(dict.ID, err)
+		return nil, &pkg.ExpressionError{
+			NS: space.ID, Var: dict.Ev, Err: err,
+		}
 	}
 
-	// Handle case with no subjects
-	if len(subs) == 0 {
-		subs = []string{""}
+	// Handle case with no parameters
+	if len(pars) == 0 {
+		pars = []string{""}
 
 		delete(env, vars.ParameterKey)
 	}
 
-	// Process each subject
-	for _, subj := range subs {
-		if subj != "" {
-			str := subj
+	// Process each parameter
+	for _, par := range pars {
+		if par != "" {
+			str := par
 			if val, err := strconv.Unquote(str); err == nil {
 				str = val
 			}
@@ -296,19 +290,10 @@ func (m Model) evalMapping(
 			str = val
 		}
 
-		env[dict.ID] = str
+		env[dict.Ev] = str
 	}
 
 	return collect(env).Export(), nil
 }
 
 func isDefined(ns *parse.Namespace) bool { return ns != nil }
-
-func exprError(name string, err error) error {
-	ferr := new(file.Error)
-	if errors.As(err, &ferr) {
-		err = ferr
-	}
-
-	return fmt.Errorf("%w(%s): %w", pkg.ErrInvalidExpression, name, err)
-}

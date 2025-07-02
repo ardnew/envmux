@@ -17,7 +17,7 @@ import (
 // with a function returning multiple values.
 //
 //nolint:ireturn
-func OK[T, E any](v T, _ ...E) T { return v }
+func OK[T, R any](v T, _ ...R) T { return v }
 
 // ReaderFromFile returns a buffered reader from the given file name.
 func ReaderFromFile(filename string) (io.Reader, error) {

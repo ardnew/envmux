@@ -9,6 +9,10 @@
       "request": "launch",
       "mode": "debug",
       "program": "./cmd/envmux",
+      "buildFlags": [
+        "-tags=pprof",
+        "-gcflags=github.com/ardnew/envmux/...=-N -l" // -m for escape analysis
+      ],
       "env": {},
       "args": [],
       "cwd": "${workspaceFolder}",
@@ -34,12 +38,18 @@
       "request": "launch",
       "mode": "debug",
       "program": "./cmd/envmux",
+      "buildFlags": [
+        "-tags=pprof",
+        "-gcflags=github.com/ardnew/envmux/...=-N -l" // -m for escape analysis
+      ],
       "env": {},
       "args": [
+        "-p",
+        "trace=prof.trace",
         "-j",
         "1",
-        "-S",
-        "default{x=1;y=2;} /* comment */\n",
+        "-s",
+        "=d{x=1}",
       ],
       "cwd": "${workspaceFolder}",
       "stopOnEntry": false,
@@ -50,12 +60,17 @@
       "request": "launch",
       "mode": "debug",
       "program": "./cmd/envmux",
+      "buildFlags": [
+        "-tags=pprof",
+        "-gcflags=github.com/ardnew/envmux/...=-N -l" // -m for escape analysis
+      ],
       "env": {},
       "args": [
         "-j",
         "1",
-        "-S",
-        "default {\n  foo = 1+2;\n}\n; foo<default> {\n  bar = 3+4;\n}\n",
+        "-i",
+        "-s",
+        "=default {\n  foo = 1+2;\n}\n; foo<default> {\n  bar = 3+4;\n}\n",
         "foo"
       ],
       "cwd": "${workspaceFolder}",

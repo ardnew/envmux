@@ -9,7 +9,9 @@ import (
 	"github.com/ardnew/envmux/pkg"
 )
 
-func Init() cmd.Node { return Node{}.Init() }
+var _ = cmd.Node(Node{}) //nolint:exhaustruct
+
+func Init() Node { return new(Node).Init().(Node) } //nolint:forcetypeassert
 
 //go:generate sed -i -E "s/(const ID = )\"[^\"]+\"/\\1\"$GOPACKAGE\"/" "$GOFILE"
 const ID = "ns"
@@ -24,7 +26,7 @@ type Node struct {
 	cmd.Config
 }
 
-func (n Node) Init() cmd.Node {
+func (n Node) Init() cmd.Node { //nolint:ireturn
 	n.Config = pkg.Wrap(
 		n.Config,
 		cmd.WithUsage(
@@ -34,7 +36,7 @@ func (n Node) Init() cmd.Node {
 				ShortHelp: shortHelp,
 				LongHelp:  longHelp,
 			},
-			func(ctx context.Context, args []string) error {
+			func(_ context.Context, _ []string) error {
 				fmt.Println("Parent: ", n.Command().GetParent().Name)
 
 				return nil

@@ -10,19 +10,27 @@ import (
 	"github.com/ardnew/envmux/pkg"
 )
 
-// Result represents the result of executing a command.
-type Result struct {
+// RunError represents the result of executing a command.
+type RunError struct {
 	Err  error
 	Help string
 	Code int
 }
 
-// ResultOK is the default successful result.
-var ResultOK = Result{}
+// ErrRunOK is the default successful result.
+var ErrRunOK = RunError{} //nolint:exhaustruct
+
+func (r RunError) Error() string {
+	if r.Err != nil {
+		return r.Err.Error()
+	}
+
+	return ""
+}
 
 // resultErr sets the error and code for the Result.
-func resultErr(err error, code int) pkg.Option[Result] {
-	return func(r Result) Result {
+func resultErr(err error, code int) pkg.Option[RunError] {
+	return func(r RunError) RunError {
 		r.Err = err
 		r.Code = code
 
@@ -31,8 +39,8 @@ func resultErr(err error, code int) pkg.Option[Result] {
 }
 
 // resultHelp sets the help message for the Result.
-func resultHelp(help string) pkg.Option[Result] {
-	return func(r Result) Result {
+func resultHelp(help string) pkg.Option[RunError] {
+	return func(r RunError) RunError {
 		r.Help = help
 
 		return r
@@ -40,17 +48,17 @@ func resultHelp(help string) pkg.Option[Result] {
 }
 
 // MakeResult creates a Result based on the given command and error.
-func MakeResult(node cmd.Node, err error) Result {
+func MakeResult(node cmd.Node, err error) RunError {
 	resultUsage := resultHelp(ffhelp.Command(node.Command()).String())
 
 	switch {
 	case err == nil:
-		return ResultOK
+		return ErrRunOK
 	case errors.Is(err, ff.ErrHelp):
-		return pkg.Wrap(Result{}, resultUsage)
+		return pkg.Make(resultUsage)
 	case errors.Is(err, ff.ErrNoExec):
-		return pkg.Wrap(Result{}, resultUsage)
+		return pkg.Make(resultUsage)
 	default:
-		return pkg.Wrap(Result{}, resultErr(err, 1))
+		return pkg.Make(resultErr(err, 1))
 	}
 }

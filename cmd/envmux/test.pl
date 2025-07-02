@@ -19,6 +19,7 @@ GetOptions(
   \our %opts,
   'debug|d!',
   'short|s!',
+  'ignoredef|i!',
   'normalize|n!',
   'transient|t!',
   'testcase|c=s@',
@@ -137,7 +138,7 @@ ___
   {
     arg => [],
     def => <<___,
-default()<>{ foo = 1+2; } /**** NO OUTPUT ****/
+default<>(){ foo = 1+2; } /**** NO OUTPUT ****/
 ___
   },
   {
@@ -258,6 +259,49 @@ default { foo = "abc"; bar = 2+3; }
 custom <default> { foo = 1+2; bar = "xyz"; }
 ___
   },
+  {
+    arg => [],
+    def => <<___,
+default <custom,> { foo = "abc"; bar = 2+3; }
+custom { foo = 1+2; bar = "xyz"; }
+___
+  },
+  {
+    arg => [],
+    def => <<___,
+default <,custom,> { foo = "abc"; bar = 2+3; }
+custom { foo = 1+2; bar = "xyz"; }
+___
+  },
+  {
+    arg => [],
+    def => <<___,
+default <custom,,> { foo = "abc"; bar = 2+3; }
+custom { foo = 1+2; bar = "xyz"; }
+___
+  },
+  {
+    arg => [],
+    def => <<___,
+default <,,custom> { foo = "abc"; bar = 2+3; }
+custom { foo = 1+2; bar = "xyz"; }
+___
+  },
+  {
+    arg => [],
+    def => <<___,
+default <,,custom,,> { foo = "abc"; bar = 2+3; }
+custom { foo = 1+2; bar = "xyz"; }
+___
+  },
+  {
+    arg => [],
+    def => <<___,
+default <custom, extra> { foo = "abc"; bar = 2+3; }
+custom { foo = 1+2; bar = "xyz"; }
+extra { whoa = "more";}
+___
+  },
 );
 
 @test = @test[map{ $_ - 1 } map { eval } @{$opts{'testcase'}}]
@@ -270,12 +314,11 @@ foreach my $ref (@test) {
   my ($def, @arg) = ($ref->{'def'}, @{ $ref->{'arg'} || ['default'] });
 
   my ($dbg) = $opts{'debug'} ? "-vv " : "";
-
-  print $dbg;
+  my ($ign) = $opts{'ignoredef'} ? "-i " : "";
 
   my ($fhi, $fho);
 
-  my $pid = open2($fho, $fhi, "${bin} -j 1 ${dbg}-s - @{arg} 2>&1") or die "$!\n";
+  my $pid = open2($fho, $fhi, "${bin} -j 1 ${dbg}${ign}-s - @{arg} 2>&1") or die "$!\n";
 
   $def = trim($def) if $opts{'normalize'};
 

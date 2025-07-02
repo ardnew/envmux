@@ -73,7 +73,7 @@ func fail(t *testing.T, cmd *exec.Cmd, args ...any) {
 
 	cc := "failure"
 	if cmd != nil {
-		cc = fmt.Sprintf("%s %+v", filepath.Base(cmd.Path), cmd.Args)
+		cc = fmt.Sprintf("%+v", cmd.Args)
 	}
 
 	t.Errorf("%v%s", cc, sb.String())
@@ -140,4 +140,246 @@ verbose true
 			fail(t, cmd, "expected=", "*test*", "got=", string(out))
 		}
 	}, "--config", configPath)
+}
+
+func TestNamespaceDefinitions(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		input    string
+		expectOK bool
+	}{
+		{
+			name:     "basic_default_namespace",
+			args:     []string{"-s", "-"},
+			input:    "default{foo=1+2;}",
+			expectOK: true,
+		},
+		{
+			name:     "default_with_spaces",
+			args:     []string{"-s", "-"},
+			input:    "default { foo = 1+2; }",
+			expectOK: true,
+		},
+		{
+			name:     "default_with_empty_parens",
+			args:     []string{"-s", "-"},
+			input:    "default<>(){ foo = 1+2; }",
+			expectOK: true,
+		},
+		{
+			name:     "default_with_no_output_comment",
+			args:     []string{"-s", "-"},
+			input:    "default()<>{ foo = 1+2; } /**** NO OUTPUT ****/",
+			expectOK: true,
+		},
+		{
+			name:     "default_with_trailing_parens",
+			args:     []string{"-s", "-"},
+			input:    "default{ foo = 1+2; }()<>",
+			expectOK: true,
+		},
+		{
+			name:     "default_with_block_comment",
+			args:     []string{"-s", "-"},
+			input:    "default <> () { foo = 1+2; } /* comment */",
+			expectOK: true,
+		},
+		{
+			name:     "default_with_line_comment",
+			args:     []string{"-s", "-"},
+			input:    "default <> () { foo = 1+2; } // comment",
+			expectOK: true,
+		},
+		{
+			name:     "custom_namespace_with_hash_comment",
+			args:     []string{"-s", "-", "custom"},
+			input:    "custom { foo = 1+2; } # comment",
+			expectOK: true,
+		},
+		{
+			name:     "commented_out_default",
+			args:     []string{"-s", "-"},
+			input:    "// default <> () { foo = 1+2; }",
+			expectOK: true,
+		},
+		{
+			name:     "commented_out_custom",
+			args:     []string{"-s", "-", "custom"},
+			input:    "# custom { foo = 1+2; }",
+			expectOK: true,
+		},
+		{
+			name:     "default_with_inline_comment",
+			args:     []string{"-s", "-"},
+			input:    "default // <> () { foo = 1+2; }",
+			expectOK: true,
+		},
+		{
+			name:     "custom_with_inline_comment",
+			args:     []string{"-s", "-", "custom"},
+			input:    "custom # { foo = 1+2; }",
+			expectOK: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			run(t, func(t *testing.T, cmd *exec.Cmd) {
+				cmd.Args = append(cmd.Args, tc.args...)
+				cmd.Stdin = strings.NewReader(tc.input)
+
+				out, err := cmd.CombinedOutput()
+
+				if tc.expectOK && err != nil {
+					fail(t, cmd, "unexpected error", err, "output=", string(out))
+				} else if !tc.expectOK && err == nil {
+					fail(t, cmd, "expected error but got none", "output=", string(out))
+				}
+			})
+		})
+	}
+}
+
+func TestMultipleNamespaces(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		input    string
+		expectOK bool
+	}{
+		{
+			name: "default_and_custom_with_comments",
+			args: []string{"-s", "-"},
+			input: `default { foo /* comment */ = "abc"; }
+custom { /* comment */ foo = 1+2; }`,
+			expectOK: true,
+		},
+		{
+			name: "custom_and_default_with_comments",
+			args: []string{"-s", "-", "custom"},
+			input: `default /* comment */ { foo = "abc"; }
+/* comment */ custom { foo = 1+2; }`,
+			expectOK: true,
+		},
+		{
+			name: "default_with_custom_dependency",
+			args: []string{"-s", "-"},
+			input: `default <custom> { foo = /* comment */ "abc"; }
+custom { foo = 1+2 /* comment */; }`,
+			expectOK: true,
+		},
+		{
+			name: "custom_with_default_dependency",
+			args: []string{"-s", "-", "custom"},
+			input: `default { foo = "abc"; }
+custom <default> { foo = 1+2; /* comment */ }`,
+			expectOK: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			run(t, func(t *testing.T, cmd *exec.Cmd) {
+				cmd.Args = append(cmd.Args, tc.args...)
+				cmd.Stdin = strings.NewReader(tc.input)
+
+				out, err := cmd.CombinedOutput()
+
+				if tc.expectOK && err != nil {
+					fail(t, cmd, "unexpected error", err, "output=", string(out))
+				} else if !tc.expectOK && err == nil {
+					fail(t, cmd, "expected error but got none", "output=", string(out))
+				}
+			})
+		})
+	}
+}
+
+func TestVariableInheritance(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		input    string
+		expectOK bool
+	}{
+		{
+			name: "default_inherits_custom_single_var",
+			args: []string{"-s", "-"},
+			input: `default <custom> { foo = "abc"; }
+custom { foo = 1+2; bar = "xyz"; }`,
+			expectOK: true,
+		},
+		{
+			name: "custom_inherits_default_single_var",
+			args: []string{"-s", "-", "custom"},
+			input: `default { foo = "abc"; }
+custom <default> { foo = 1+2; bar = "xyz"; }`,
+			expectOK: true,
+		},
+		{
+			name: "default_inherits_custom_multiple_vars",
+			args: []string{"-s", "-"},
+			input: `default <custom> { foo = "abc"; bar = "xyz"; }
+custom { foo = 1+2; }`,
+			expectOK: true,
+		},
+		{
+			name: "custom_inherits_default_multiple_vars",
+			args: []string{"-s", "-", "custom"},
+			input: `default { foo = "abc"; bar = "xyz"; }
+custom <default> { foo = 1+2; }`,
+			expectOK: true,
+		},
+		{
+			name: "default_inherits_custom_mixed_types",
+			args: []string{"-s", "-"},
+			input: `default <custom> { foo = "abc"; bar = 2+3; }
+custom { foo = 1+2; bar = "xyz"; }`,
+			expectOK: true,
+		},
+		{
+			name: "custom_inherits_default_mixed_types",
+			args: []string{"-s", "-", "custom"},
+			input: `default { foo = "abc"; bar = 2+3; }
+custom <default> { foo = 1+2; bar = "xyz"; }`,
+			expectOK: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			run(t, func(t *testing.T, cmd *exec.Cmd) {
+				cmd.Args = append(cmd.Args, tc.args...)
+				cmd.Stdin = strings.NewReader(tc.input)
+
+				out, err := cmd.CombinedOutput()
+
+				if tc.expectOK && err != nil {
+					fail(t, cmd, "unexpected error", err, "output=", string(out))
+				} else if !tc.expectOK && err == nil {
+					fail(t, cmd, "expected error but got none", "output=", string(out))
+				}
+			})
+		})
+	}
+}
+
+func TestJSONOutput(t *testing.T) {
+	run(t, func(t *testing.T, cmd *exec.Cmd) {
+		input := "default { foo = 1+2; bar = \"test\"; }"
+		cmd.Args = append(cmd.Args, "-j", "1", "-s", "-")
+		cmd.Stdin = strings.NewReader(input)
+
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			fail(t, cmd, "unexpected error", err, "output=", string(out))
+		}
+
+		// Basic check that output looks like JSON
+		outStr := strings.TrimSpace(string(out))
+		if !strings.HasPrefix(outStr, "{") || !strings.HasSuffix(outStr, "}") {
+			fail(t, cmd, "expected JSON output", "got=", outStr)
+		}
+	})
 }

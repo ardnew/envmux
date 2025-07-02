@@ -25,25 +25,25 @@ type lexerConfigDefinitionImpl struct{}
 
 func (lexerConfigDefinitionImpl) Symbols() map[string]lexer.TokenType {
 	return map[string]lexer.TokenType{
-		"AA":             -19,
-		"CC":             -3,
-		"CO":             -9,
-		"EE":             -7,
-		"EOF":            -1,
-		"EX":             -28,
-		"FS":             -15,
-		"ID":             -26,
-		"NS":             -21,
-		"NU":             -17,
-		"OP":             -27,
-		"PC":             -14,
-		"PO":             -10,
-		"QQ":             -16,
-		"RS":             -25,
-		"SC":             -24,
-		"SO":             -23,
-		"XX":             -22,
-		"returnToParent": -12,
+		"AA":  -29,
+		"CC":  -3,
+		"CO":  -20,
+		"EE":  -30,
+		"EOF": -1,
+		"EX":  -28,
+		"FS":  -12,
+		"ID":  -26,
+		"NS":  -19,
+		"NU":  -14,
+		"OP":  -27,
+		"PC":  -11,
+		"PO":  -21,
+		"QQ":  -13,
+		"RS":  -18,
+		"SC":  -25,
+		"SO":  -24,
+		"XX":  -23,
+		"Z0":  -9,
 	}
 }
 
@@ -94,67 +94,55 @@ func (l *lexerConfigImpl) Next() (lexer.Token, error) {
 		sym    lexer.TokenType
 	)
 	switch state.name {
-	case "Composite":
+	case "Composites":
 		if match := matchConfigXX(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -22
+			sym = -23
 			groups = match[:]
 		} else if match := matchConfigCC(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
 			sym = -3
 			groups = match[:]
 			l.states = l.states[:len(l.states)-1]
 		} else if match := matchConfigFS(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -15
+			sym = -12
+			groups = match[:]
+		} else if match := matchConfigQQ(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
+			sym = -13
 			groups = match[:]
 		} else if match := matchConfigNS(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -21
-			groups = match[:]
-		}
-	case "Elidable":
-		if match := matchConfigXX(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -22
+			sym = -19
 			groups = match[:]
 		}
 	case "Escaped":
 		if match := matchConfigEE(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -7
+			sym = -30
 			groups = match[:]
 		}
-	case "Namespace":
+	case "Global":
 		if match := matchConfigXX(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -22
-			groups = match[:]
-		} else if match := matchConfigCO(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -9
-			groups = match[:]
-			l.states = append(l.states, lexerConfigState{name: "Composite"})
-		} else if match := matchConfigPO(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -10
-			groups = match[:]
-			l.states = append(l.states, lexerConfigState{name: "Parameter"})
-		} else if match := matchConfigSO(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
 			sym = -23
 			groups = match[:]
-			l.states = append(l.states, lexerConfigState{name: "Statement"})
-		} else if true {
-			l.states = l.states[:len(l.states)-1]
-			return l.Next()
 		}
-	case "Parameter":
+	case "Invalid":
+		if match := matchConfigZ0(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
+			sym = -9
+			groups = match[:]
+		}
+	case "Parameters":
 		if match := matchConfigXX(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -22
+			sym = -23
 			groups = match[:]
 		} else if match := matchConfigPC(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -14
+			sym = -11
 			groups = match[:]
 			l.states = l.states[:len(l.states)-1]
 		} else if match := matchConfigFS(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -15
+			sym = -12
 			groups = match[:]
 		} else if match := matchConfigQQ(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -16
+			sym = -13
 			groups = match[:]
 		} else if match := matchConfigNU(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -17
+			sym = -14
 			groups = match[:]
 		} else if match := matchConfigID(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
 			sym = -26
@@ -162,33 +150,44 @@ func (l *lexerConfigImpl) Next() (lexer.Token, error) {
 		}
 	case "Printable":
 		if match := matchConfigAA(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -19
+			sym = -29
 			groups = match[:]
 		}
 	case "Root":
 		if match := matchConfigXX(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -22
-			groups = match[:]
-		} else if match := matchConfigNS(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -21
-			groups = match[:]
-			l.states = append(l.states, lexerConfigState{name: "Namespace"})
-		}
-	case "Statement":
-		if match := matchConfigXX(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -22
-			groups = match[:]
-		} else if match := matchConfigSO(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
 			sym = -23
 			groups = match[:]
-			l.states = append(l.states, lexerConfigState{name: "Statement"})
-		} else if match := matchConfigSC(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
+		} else if match := matchConfigRS(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
+			sym = -18
+			groups = match[:]
+		} else if match := matchConfigNS(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
+			sym = -19
+			groups = match[:]
+		} else if match := matchConfigCO(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
+			sym = -20
+			groups = match[:]
+			l.states = append(l.states, lexerConfigState{name: "Composites"})
+		} else if match := matchConfigPO(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
+			sym = -21
+			groups = match[:]
+			l.states = append(l.states, lexerConfigState{name: "Parameters"})
+		} else if match := matchConfigSO(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
 			sym = -24
 			groups = match[:]
-			l.states = l.states[:len(l.states)-1]
-		} else if match := matchConfigRS(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
+			l.states = append(l.states, lexerConfigState{name: "Statements"})
+		}
+	case "Statements":
+		if match := matchConfigXX(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
+			sym = -23
+			groups = match[:]
+		} else if match := matchConfigSO(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
+			sym = -24
+			groups = match[:]
+			l.states = append(l.states, lexerConfigState{name: "Statements"})
+		} else if match := matchConfigSC(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
 			sym = -25
 			groups = match[:]
+			l.states = l.states[:len(l.states)-1]
 		} else if match := matchConfigID(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
 			sym = -26
 			groups = match[:]
@@ -197,6 +196,14 @@ func (l *lexerConfigImpl) Next() (lexer.Token, error) {
 			groups = match[:]
 		} else if match := matchConfigEX(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
 			sym = -28
+			groups = match[:]
+		}
+	case "Wildcard":
+		if match := matchConfigAA(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
+			sym = -29
+			groups = match[:]
+		} else if match := matchConfigEE(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
+			sym = -30
 			groups = match[:]
 		}
 	}
@@ -226,17 +233,38 @@ func (l *lexerConfigImpl) sgroups(match []int) []string {
 	return sgroups
 }
 
-// /\*(?:[^\*]|\*[^/])*\*/|(?://|#)[^\n\r]*\r?\n|[\t\n\f\r ]
+// /\*+(?:[^\*]|\*[^\*/])*\*+/|(?://|#)[^\n\r]*\r?\n|[\t\n\f\r ]+
 func matchConfigXX(s string, p int, backrefs []string) (groups [2]int) {
-	// /\* (Literal)
+	// / (Literal)
 	l0 := func(s string, p int) int {
-		if p+2 <= len(s) && s[p:p+2] == "/*" {
-			return p + 2
+		if p < len(s) && s[p] == '/' {
+			return p + 1
 		}
 		return -1
 	}
-	// [^\*] (CharClass)
+	// \* (Literal)
 	l1 := func(s string, p int) int {
+		if p < len(s) && s[p] == '*' {
+			return p + 1
+		}
+		return -1
+	}
+	// \*+ (Plus)
+	l2 := func(s string, p int) int {
+		if p = l1(s, p); p == -1 {
+			return -1
+		}
+		for len(s) > p {
+			if np := l1(s, p); np == -1 {
+				return p
+			} else {
+				p = np
+			}
+		}
+		return p
+	}
+	// [^\*] (CharClass)
+	l3 := func(s string, p int) int {
 		if len(s) <= p {
 			return -1
 		}
@@ -257,15 +285,8 @@ func matchConfigXX(s string, p int, backrefs []string) (groups [2]int) {
 		}
 		return -1
 	}
-	// \* (Literal)
-	l2 := func(s string, p int) int {
-		if p < len(s) && s[p] == '*' {
-			return p + 1
-		}
-		return -1
-	}
-	// [^/] (CharClass)
-	l3 := func(s string, p int) int {
+	// [^\*/] (CharClass)
+	l4 := func(s string, p int) int {
 		if len(s) <= p {
 			return -1
 		}
@@ -279,37 +300,39 @@ func matchConfigXX(s string, p int, backrefs []string) (groups [2]int) {
 			rn, n = utf8.DecodeRuneInString(s[p:])
 		}
 		switch {
-		case rn >= '\x00' && rn <= '.':
+		case rn >= '\x00' && rn <= ')':
+			return p + 1
+		case rn >= '+' && rn <= '.':
 			return p + 1
 		case rn >= '0' && rn <= '\U0010ffff':
 			return p + n
 		}
 		return -1
 	}
-	// \*[^/] (Concat)
-	l4 := func(s string, p int) int {
-		if p = l2(s, p); p == -1 {
+	// \*[^\*/] (Concat)
+	l5 := func(s string, p int) int {
+		if p = l1(s, p); p == -1 {
 			return -1
 		}
-		if p = l3(s, p); p == -1 {
+		if p = l4(s, p); p == -1 {
 			return -1
 		}
 		return p
 	}
-	// [^\*]|\*[^/] (Alternate)
-	l5 := func(s string, p int) int {
-		if np := l1(s, p); np != -1 {
+	// [^\*]|\*[^\*/] (Alternate)
+	l6 := func(s string, p int) int {
+		if np := l3(s, p); np != -1 {
 			return np
 		}
-		if np := l4(s, p); np != -1 {
+		if np := l5(s, p); np != -1 {
 			return np
 		}
 		return -1
 	}
-	// (?:[^\*]|\*[^/])* (Star)
-	l6 := func(s string, p int) int {
+	// (?:[^\*]|\*[^\*/])* (Star)
+	l7 := func(s string, p int) int {
 		for len(s) > p {
-			if np := l5(s, p); np == -1 {
+			if np := l6(s, p); np == -1 {
 				return p
 			} else {
 				p = np
@@ -317,22 +340,21 @@ func matchConfigXX(s string, p int, backrefs []string) (groups [2]int) {
 		}
 		return p
 	}
-	// \*/ (Literal)
-	l7 := func(s string, p int) int {
-		if p+2 <= len(s) && s[p:p+2] == "*/" {
-			return p + 2
-		}
-		return -1
-	}
-	// /\*(?:[^\*]|\*[^/])*\*/ (Concat)
+	// /\*+(?:[^\*]|\*[^\*/])*\*+/ (Concat)
 	l8 := func(s string, p int) int {
 		if p = l0(s, p); p == -1 {
 			return -1
 		}
-		if p = l6(s, p); p == -1 {
+		if p = l2(s, p); p == -1 {
 			return -1
 		}
 		if p = l7(s, p); p == -1 {
+			return -1
+		}
+		if p = l2(s, p); p == -1 {
+			return -1
+		}
+		if p = l0(s, p); p == -1 {
 			return -1
 		}
 		return p
@@ -449,20 +471,34 @@ func matchConfigXX(s string, p int, backrefs []string) (groups [2]int) {
 		}
 		return -1
 	}
-	// /\*(?:[^\*]|\*[^/])*\*/|(?://|#)[^\n\r]*\r?\n|[\t\n\f\r ] (Alternate)
+	// [\t\n\f\r ]+ (Plus)
 	l19 := func(s string, p int) int {
+		if p = l18(s, p); p == -1 {
+			return -1
+		}
+		for len(s) > p {
+			if np := l18(s, p); np == -1 {
+				return p
+			} else {
+				p = np
+			}
+		}
+		return p
+	}
+	// /\*+(?:[^\*]|\*[^\*/])*\*+/|(?://|#)[^\n\r]*\r?\n|[\t\n\f\r ]+ (Alternate)
+	l20 := func(s string, p int) int {
 		if np := l8(s, p); np != -1 {
 			return np
 		}
 		if np := l17(s, p); np != -1 {
 			return np
 		}
-		if np := l18(s, p); np != -1 {
+		if np := l19(s, p); np != -1 {
 			return np
 		}
 		return -1
 	}
-	np := l19(s, p)
+	np := l20(s, p)
 	if np == -1 {
 		return
 	}
@@ -483,241 +519,6 @@ func matchConfigCC(s string, p int, backrefs []string) (groups [2]int) {
 // ,
 func matchConfigFS(s string, p int, backrefs []string) (groups [2]int) {
 	if p < len(s) && s[p] == ',' {
-		groups[0] = p
-		groups[1] = p + 1
-	}
-	return
-}
-
-// [^\t\n\f\r \(\),;->\[\]\{\}]+(?: +[^\t\n\f\r \(\),;->\[\]\{\}]|[^\t\n\f\r \(\),;->\[\]\{\}])*
-func matchConfigNS(s string, p int, backrefs []string) (groups [2]int) {
-	// [^\t\n\f\r \(\),;->\[\]\{\}] (CharClass)
-	l0 := func(s string, p int) int {
-		if len(s) <= p {
-			return -1
-		}
-		var (
-			rn rune
-			n  int
-		)
-		if s[p] < utf8.RuneSelf {
-			rn, n = rune(s[p]), 1
-		} else {
-			rn, n = utf8.DecodeRuneInString(s[p:])
-		}
-		switch {
-		case rn >= '\x00' && rn <= '\b':
-			return p + 1
-		case rn == '\v':
-			return p + 1
-		case rn >= '\x0e' && rn <= '\x1f':
-			return p + 1
-		case rn >= '!' && rn <= '\'':
-			return p + 1
-		case rn >= '*' && rn <= '+':
-			return p + 1
-		case rn >= '-' && rn <= ':':
-			return p + 1
-		case rn >= '?' && rn <= 'Z':
-			return p + 1
-		case rn == '\\':
-			return p + 1
-		case rn >= '^' && rn <= 'z':
-			return p + 1
-		case rn == '|':
-			return p + 1
-		case rn >= '~' && rn <= '\U0010ffff':
-			return p + n
-		}
-		return -1
-	}
-	// [^\t\n\f\r \(\),;->\[\]\{\}]+ (Plus)
-	l1 := func(s string, p int) int {
-		if p = l0(s, p); p == -1 {
-			return -1
-		}
-		for len(s) > p {
-			if np := l0(s, p); np == -1 {
-				return p
-			} else {
-				p = np
-			}
-		}
-		return p
-	}
-	// (Literal)
-	l2 := func(s string, p int) int {
-		if p < len(s) && s[p] == ' ' {
-			return p + 1
-		}
-		return -1
-	}
-	// + (Plus)
-	l3 := func(s string, p int) int {
-		if p = l2(s, p); p == -1 {
-			return -1
-		}
-		for len(s) > p {
-			if np := l2(s, p); np == -1 {
-				return p
-			} else {
-				p = np
-			}
-		}
-		return p
-	}
-	// +[^\t\n\f\r \(\),;->\[\]\{\}] (Concat)
-	l4 := func(s string, p int) int {
-		if p = l3(s, p); p == -1 {
-			return -1
-		}
-		if p = l0(s, p); p == -1 {
-			return -1
-		}
-		return p
-	}
-	// +[^\t\n\f\r \(\),;->\[\]\{\}]|[^\t\n\f\r \(\),;->\[\]\{\}] (Alternate)
-	l5 := func(s string, p int) int {
-		if np := l4(s, p); np != -1 {
-			return np
-		}
-		if np := l0(s, p); np != -1 {
-			return np
-		}
-		return -1
-	}
-	// (?: +[^\t\n\f\r \(\),;->\[\]\{\}]|[^\t\n\f\r \(\),;->\[\]\{\}])* (Star)
-	l6 := func(s string, p int) int {
-		for len(s) > p {
-			if np := l5(s, p); np == -1 {
-				return p
-			} else {
-				p = np
-			}
-		}
-		return p
-	}
-	// [^\t\n\f\r \(\),;->\[\]\{\}]+(?: +[^\t\n\f\r \(\),;->\[\]\{\}]|[^\t\n\f\r \(\),;->\[\]\{\}])* (Concat)
-	l7 := func(s string, p int) int {
-		if p = l1(s, p); p == -1 {
-			return -1
-		}
-		if p = l6(s, p); p == -1 {
-			return -1
-		}
-		return p
-	}
-	np := l7(s, p)
-	if np == -1 {
-		return
-	}
-	groups[0] = p
-	groups[1] = np
-	return
-}
-
-// \\[^\t\n\f\r ]
-func matchConfigEE(s string, p int, backrefs []string) (groups [2]int) {
-	// \\ (Literal)
-	l0 := func(s string, p int) int {
-		if p < len(s) && s[p] == '\\' {
-			return p + 1
-		}
-		return -1
-	}
-	// [^\t\n\f\r ] (CharClass)
-	l1 := func(s string, p int) int {
-		if len(s) <= p {
-			return -1
-		}
-		var (
-			rn rune
-			n  int
-		)
-		if s[p] < utf8.RuneSelf {
-			rn, n = rune(s[p]), 1
-		} else {
-			rn, n = utf8.DecodeRuneInString(s[p:])
-		}
-		switch {
-		case rn >= '\x00' && rn <= '\b':
-			return p + 1
-		case rn == '\v':
-			return p + 1
-		case rn >= '\x0e' && rn <= '\x1f':
-			return p + 1
-		case rn >= '!' && rn <= '\U0010ffff':
-			return p + n
-		}
-		return -1
-	}
-	// \\[^\t\n\f\r ] (Concat)
-	l2 := func(s string, p int) int {
-		if p = l0(s, p); p == -1 {
-			return -1
-		}
-		if p = l1(s, p); p == -1 {
-			return -1
-		}
-		return p
-	}
-	np := l2(s, p)
-	if np == -1 {
-		return
-	}
-	groups[0] = p
-	groups[1] = np
-	return
-}
-
-// <
-func matchConfigCO(s string, p int, backrefs []string) (groups [2]int) {
-	if p < len(s) && s[p] == '<' {
-		groups[0] = p
-		groups[1] = p + 1
-	}
-	return
-}
-
-// \(
-func matchConfigPO(s string, p int, backrefs []string) (groups [2]int) {
-	if p < len(s) && s[p] == '(' {
-		groups[0] = p
-		groups[1] = p + 1
-	}
-	return
-}
-
-// \{
-func matchConfigSO(s string, p int, backrefs []string) (groups [2]int) {
-	if p < len(s) && s[p] == '{' {
-		groups[0] = p
-		groups[1] = p + 1
-	}
-	return
-}
-
-// (?:)
-func matchConfigreturnToParent(s string, p int, backrefs []string) (groups [2]int) {
-	// (?:) (EmptyMatch)
-	l0 := func(s string, p int) int {
-		if len(s) == 0 {
-			return p
-		}
-		return -1
-	}
-	np := l0(s, p)
-	if np == -1 {
-		return
-	}
-	groups[0] = p
-	groups[1] = np
-	return
-}
-
-// \)
-func matchConfigPC(s string, p int, backrefs []string) (groups [2]int) {
-	if p < len(s) && s[p] == ')' {
 		groups[0] = p
 		groups[1] = p + 1
 	}
@@ -828,6 +629,329 @@ func matchConfigQQ(s string, p int, backrefs []string) (groups [2]int) {
 	}
 	groups[0] = p
 	groups[1] = np
+	return
+}
+
+// \b(?:[^\t\n\f\r #\(\),/;->\[\]\{\}]|/[^\*/])+(?: +(?:[^\t\n\f\r #\(\),/;->\[\]\{\}]|/[^\*/])+)*\b
+func matchConfigNS(s string, p int, backrefs []string) (groups [2]int) {
+	// \b (WordBoundary)
+	l0 := func(s string, p int) int {
+		var l, u rune = -1, -1
+		if p == 0 {
+			if p < len(s) {
+				if s[0] < utf8.RuneSelf {
+					u, _ = rune(s[0]), 1
+				} else {
+					u, _ = utf8.DecodeRuneInString(s[0:])
+				}
+			}
+		} else if p == len(s) {
+			l, _ = utf8.DecodeLastRuneInString(s)
+		} else {
+			l, _ = utf8.DecodeLastRuneInString(s[0:p])
+			if s[p] < utf8.RuneSelf {
+				u, _ = rune(s[p]), 1
+			} else {
+				u, _ = utf8.DecodeRuneInString(s[p:])
+			}
+		}
+		op := syntax.EmptyOpContext(l, u)
+		if op&syntax.EmptyWordBoundary != 0 {
+			return p
+		}
+		return -1
+	}
+	// [^\t\n\f\r #\(\),/;->\[\]\{\}] (CharClass)
+	l1 := func(s string, p int) int {
+		if len(s) <= p {
+			return -1
+		}
+		var (
+			rn rune
+			n  int
+		)
+		if s[p] < utf8.RuneSelf {
+			rn, n = rune(s[p]), 1
+		} else {
+			rn, n = utf8.DecodeRuneInString(s[p:])
+		}
+		switch {
+		case rn >= '\x00' && rn <= '\b':
+			return p + 1
+		case rn == '\v':
+			return p + 1
+		case rn >= '\x0e' && rn <= '\x1f':
+			return p + 1
+		case rn >= '!' && rn <= '"':
+			return p + 1
+		case rn >= '$' && rn <= '\'':
+			return p + 1
+		case rn >= '*' && rn <= '+':
+			return p + 1
+		case rn >= '-' && rn <= '.':
+			return p + 1
+		case rn >= '0' && rn <= ':':
+			return p + 1
+		case rn >= '?' && rn <= 'Z':
+			return p + 1
+		case rn == '\\':
+			return p + 1
+		case rn >= '^' && rn <= 'z':
+			return p + 1
+		case rn == '|':
+			return p + 1
+		case rn >= '~' && rn <= '\U0010ffff':
+			return p + n
+		}
+		return -1
+	}
+	// / (Literal)
+	l2 := func(s string, p int) int {
+		if p < len(s) && s[p] == '/' {
+			return p + 1
+		}
+		return -1
+	}
+	// [^\*/] (CharClass)
+	l3 := func(s string, p int) int {
+		if len(s) <= p {
+			return -1
+		}
+		var (
+			rn rune
+			n  int
+		)
+		if s[p] < utf8.RuneSelf {
+			rn, n = rune(s[p]), 1
+		} else {
+			rn, n = utf8.DecodeRuneInString(s[p:])
+		}
+		switch {
+		case rn >= '\x00' && rn <= ')':
+			return p + 1
+		case rn >= '+' && rn <= '.':
+			return p + 1
+		case rn >= '0' && rn <= '\U0010ffff':
+			return p + n
+		}
+		return -1
+	}
+	// /[^\*/] (Concat)
+	l4 := func(s string, p int) int {
+		if p = l2(s, p); p == -1 {
+			return -1
+		}
+		if p = l3(s, p); p == -1 {
+			return -1
+		}
+		return p
+	}
+	// [^\t\n\f\r #\(\),/;->\[\]\{\}]|/[^\*/] (Alternate)
+	l5 := func(s string, p int) int {
+		if np := l1(s, p); np != -1 {
+			return np
+		}
+		if np := l4(s, p); np != -1 {
+			return np
+		}
+		return -1
+	}
+	// (?:[^\t\n\f\r #\(\),/;->\[\]\{\}]|/[^\*/])+ (Plus)
+	l6 := func(s string, p int) int {
+		if p = l5(s, p); p == -1 {
+			return -1
+		}
+		for len(s) > p {
+			if np := l5(s, p); np == -1 {
+				return p
+			} else {
+				p = np
+			}
+		}
+		return p
+	}
+	// (Literal)
+	l7 := func(s string, p int) int {
+		if p < len(s) && s[p] == ' ' {
+			return p + 1
+		}
+		return -1
+	}
+	// + (Plus)
+	l8 := func(s string, p int) int {
+		if p = l7(s, p); p == -1 {
+			return -1
+		}
+		for len(s) > p {
+			if np := l7(s, p); np == -1 {
+				return p
+			} else {
+				p = np
+			}
+		}
+		return p
+	}
+	// +(?:[^\t\n\f\r #\(\),/;->\[\]\{\}]|/[^\*/])+ (Concat)
+	l9 := func(s string, p int) int {
+		if p = l8(s, p); p == -1 {
+			return -1
+		}
+		if p = l6(s, p); p == -1 {
+			return -1
+		}
+		return p
+	}
+	// (?: +(?:[^\t\n\f\r #\(\),/;->\[\]\{\}]|/[^\*/])+)* (Star)
+	l10 := func(s string, p int) int {
+		for len(s) > p {
+			if np := l9(s, p); np == -1 {
+				return p
+			} else {
+				p = np
+			}
+		}
+		return p
+	}
+	// \b(?:[^\t\n\f\r #\(\),/;->\[\]\{\}]|/[^\*/])+(?: +(?:[^\t\n\f\r #\(\),/;->\[\]\{\}]|/[^\*/])+)*\b (Concat)
+	l11 := func(s string, p int) int {
+		if p = l0(s, p); p == -1 {
+			return -1
+		}
+		if p = l6(s, p); p == -1 {
+			return -1
+		}
+		if p = l10(s, p); p == -1 {
+			return -1
+		}
+		if p = l0(s, p); p == -1 {
+			return -1
+		}
+		return p
+	}
+	np := l11(s, p)
+	if np == -1 {
+		return
+	}
+	groups[0] = p
+	groups[1] = np
+	return
+}
+
+// \\[^\t\n\f\r ]
+func matchConfigEE(s string, p int, backrefs []string) (groups [2]int) {
+	// \\ (Literal)
+	l0 := func(s string, p int) int {
+		if p < len(s) && s[p] == '\\' {
+			return p + 1
+		}
+		return -1
+	}
+	// [^\t\n\f\r ] (CharClass)
+	l1 := func(s string, p int) int {
+		if len(s) <= p {
+			return -1
+		}
+		var (
+			rn rune
+			n  int
+		)
+		if s[p] < utf8.RuneSelf {
+			rn, n = rune(s[p]), 1
+		} else {
+			rn, n = utf8.DecodeRuneInString(s[p:])
+		}
+		switch {
+		case rn >= '\x00' && rn <= '\b':
+			return p + 1
+		case rn == '\v':
+			return p + 1
+		case rn >= '\x0e' && rn <= '\x1f':
+			return p + 1
+		case rn >= '!' && rn <= '\U0010ffff':
+			return p + n
+		}
+		return -1
+	}
+	// \\[^\t\n\f\r ] (Concat)
+	l2 := func(s string, p int) int {
+		if p = l0(s, p); p == -1 {
+			return -1
+		}
+		if p = l1(s, p); p == -1 {
+			return -1
+		}
+		return p
+	}
+	np := l2(s, p)
+	if np == -1 {
+		return
+	}
+	groups[0] = p
+	groups[1] = np
+	return
+}
+
+// nevermatch\A
+func matchConfigZ0(s string, p int, backrefs []string) (groups [2]int) {
+	// nevermatch (Literal)
+	l0 := func(s string, p int) int {
+		if p+10 <= len(s) && s[p:p+10] == "nevermatch" {
+			return p + 10
+		}
+		return -1
+	}
+	// \A (BeginText)
+	l1 := func(s string, p int) int {
+		var l, u rune = -1, -1
+		if p == 0 {
+			if p < len(s) {
+				if s[0] < utf8.RuneSelf {
+					u, _ = rune(s[0]), 1
+				} else {
+					u, _ = utf8.DecodeRuneInString(s[0:])
+				}
+			}
+		} else if p == len(s) {
+			l, _ = utf8.DecodeLastRuneInString(s)
+		} else {
+			l, _ = utf8.DecodeLastRuneInString(s[0:p])
+			if s[p] < utf8.RuneSelf {
+				u, _ = rune(s[p]), 1
+			} else {
+				u, _ = utf8.DecodeRuneInString(s[p:])
+			}
+		}
+		op := syntax.EmptyOpContext(l, u)
+		if op&syntax.EmptyBeginText != 0 {
+			return p
+		}
+		return -1
+	}
+	// nevermatch\A (Concat)
+	l2 := func(s string, p int) int {
+		if p = l0(s, p); p == -1 {
+			return -1
+		}
+		if p = l1(s, p); p == -1 {
+			return -1
+		}
+		return p
+	}
+	np := l2(s, p)
+	if np == -1 {
+		return
+	}
+	groups[0] = p
+	groups[1] = np
+	return
+}
+
+// \)
+func matchConfigPC(s string, p int, backrefs []string) (groups [2]int) {
+	if p < len(s) && s[p] == ')' {
+		groups[0] = p
+		groups[1] = p + 1
+	}
 	return
 }
 
@@ -1312,18 +1436,45 @@ func matchConfigAA(s string, p int, backrefs []string) (groups [2]int) {
 	return
 }
 
-// \}
-func matchConfigSC(s string, p int, backrefs []string) (groups [2]int) {
-	if p < len(s) && s[p] == '}' {
+// ;
+func matchConfigRS(s string, p int, backrefs []string) (groups [2]int) {
+	if p < len(s) && s[p] == ';' {
 		groups[0] = p
 		groups[1] = p + 1
 	}
 	return
 }
 
-// ;
-func matchConfigRS(s string, p int, backrefs []string) (groups [2]int) {
-	if p < len(s) && s[p] == ';' {
+// <
+func matchConfigCO(s string, p int, backrefs []string) (groups [2]int) {
+	if p < len(s) && s[p] == '<' {
+		groups[0] = p
+		groups[1] = p + 1
+	}
+	return
+}
+
+// \(
+func matchConfigPO(s string, p int, backrefs []string) (groups [2]int) {
+	if p < len(s) && s[p] == '(' {
+		groups[0] = p
+		groups[1] = p + 1
+	}
+	return
+}
+
+// \{
+func matchConfigSO(s string, p int, backrefs []string) (groups [2]int) {
+	if p < len(s) && s[p] == '{' {
+		groups[0] = p
+		groups[1] = p + 1
+	}
+	return
+}
+
+// \}
+func matchConfigSC(s string, p int, backrefs []string) (groups [2]int) {
+	if p < len(s) && s[p] == '}' {
 		groups[0] = p
 		groups[1] = p + 1
 	}

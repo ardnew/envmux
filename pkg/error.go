@@ -1,7 +1,14 @@
 package pkg
 
 import (
+	"errors"
+	"fmt"
+	"strconv"
 	"strings"
+
+	"github.com/alecthomas/participle/v2"
+	"github.com/alecthomas/participle/v2/lexer"
+	"github.com/expr-lang/expr/file"
 )
 
 // Error represents an error with an embedded message.
@@ -53,6 +60,12 @@ var (
 	ErrInvalidDefinitions = Error{"invalid namespace definitions"}
 	// ErrInvalidNamespace indicates that the namespace is invalid.
 	ErrInvalidNamespace = Error{"invalid namespace"}
+	// ErrInvalidComposite indicates that the composite is invalid.
+	ErrInvalidComposite = Error{"invalid composite"}
+	// ErrInvalidParameter indicates that the parameter is invalid.
+	ErrInvalidParameter = Error{"invalid parameter"}
+	// ErrInvalidStatement indicates that the statement is invalid.
+	ErrInvalidStatement = Error{"invalid statement"}
 	// ErrInvalidEnvVar indicates that the environment is invalid.
 	ErrInvalidEnvVar = Error{"invalid environment variable"}
 	// ErrInvalidExpression indicates that an expression is invalid.
@@ -65,17 +78,125 @@ var (
 	ErrIncompleteParse = Error{"incomplete parse"}
 	// ErrIncompleteEval indicates that the evaluation is incomplete.
 	ErrIncompleteEval = Error{"incomplete evaluation"}
+
+	// ErrUnexpectedToken indicates that an unexpected token was encountered.
+	ErrUnexpectedToken = Error{"unexpected token"}
 )
 
-// ErrInvalidConfigFile indicates that the configuration file is invalid.
-// ErrInvalidConfigFile = Error{"invalid configuration file"}
-// ErrInvalidFlag indicates that the flag is invalid.
-// ErrInvalidFlag = Error{"invalid flag"}
-// ErrInvalidComposition indicates that the composition is invalid.
-// ErrInvalidComposition = Error{"invalid composition"}
-// ErrInvalidParameter indicates that the subject is invalid.
-// ErrInvalidParameter = Error{"invalid subject"}
-// ErrInvalidIdent indicates that an identifier is invalid.
-// ErrInvalidIdent = Error{"invalid identifier"}
-// ErrIncompleteInit indicates that the initialization is incomplete.
-// ErrIncompleteInit = Error{"incomplete initialization"}
+type IncompleteParseError struct {
+	Err error
+	Src []string
+}
+
+func (e *IncompleteParseError) Error() string {
+	var src strings.Builder
+
+	for i, s := range e.Src {
+		if i > 0 {
+			src.WriteString(",")
+		}
+
+		if s = strings.TrimSpace(s); s == "" {
+			continue // skip empty definitions
+		}
+
+		switch {
+		case s == StdinSourcePath:
+			src.WriteString("STDIN")
+		case strings.HasPrefix(s, InlineSourcePrefix):
+			s = strconv.Quote(strings.TrimPrefix(s, InlineSourcePrefix))
+
+			fallthrough
+		default:
+			src.WriteString(s)
+		}
+	}
+
+	ref := src.String()
+
+	var (
+		n *NamespaceError
+		x *ExpressionError
+		p *participle.ParseError
+	)
+
+	var msg string
+
+	switch {
+	case errors.As(e.Err, &x):
+		msg = fmt.Sprintf(" at %s%v", ref, x)
+	case errors.As(e.Err, &n):
+		msg = fmt.Sprintf(" at %s%v", ref, n)
+	case errors.As(e.Err, &p):
+		msg = fmt.Sprintf(" at %s[%d:%d]: %s", ref, p.Pos.Line, p.Pos.Column, p.Msg)
+	case src.Len() > 0:
+		msg = fmt.Sprintf(" at %s: %v", ref, e.Err)
+	default:
+		msg = fmt.Sprintf(": %v", e.Err)
+	}
+
+	return fmt.Sprintf("%v%s", ErrIncompleteParse, msg)
+}
+
+type NamespaceError struct {
+	ID  string
+	Err error
+}
+
+func (e *NamespaceError) Error() string {
+	var sp, id string
+	if e.ID != "" {
+		id = fmt.Sprintf(" (in namespace %q)", e.ID)
+	}
+
+	ee, ue := e.Err, new(UnexpectedTokenError)
+	if errors.As(e.Err, &ue) {
+		ee, sp = ue, fmt.Sprintf("[%d:%d]", ue.Tok.Pos.Line, ue.Tok.Pos.Column)
+	}
+
+	return fmt.Sprintf("%s: %v%s", sp, ee, id)
+}
+
+type ExpressionError struct {
+	NS  string
+	Var string
+	Err error
+}
+
+func (e *ExpressionError) Error() string {
+	var sp, id, tx string
+	if e.NS != "" {
+		id = fmt.Sprintf(" (expression %q in namespace %q)", e.Var, e.NS)
+	}
+
+	ee, ue := e.Err, new(file.Error)
+	if errors.As(e.Err, &ue) {
+		ee, sp = errors.New(ue.Message), fmt.Sprintf("[%d:%d]", ue.Line, ue.Column)
+		tx = "\t" + strings.ReplaceAll(ue.Snippet, "\n", "\n\t")
+	}
+
+	return fmt.Sprintf("%s: [%T] %v%s%s", sp, ee, ee, id, tx)
+}
+
+type UnexpectedTokenError struct {
+	Tok *lexer.Token
+	Msg []string
+}
+
+func (e *UnexpectedTokenError) Error() string {
+	var sb strings.Builder
+
+	if e.Tok != nil {
+		if e.Tok.Value != "" {
+			sb.WriteRune(' ')
+			sb.WriteString(strconv.Quote(e.Tok.Value))
+		}
+	}
+
+	for _, n := range e.Msg {
+		sb.WriteString(": ")
+		sb.WriteString(n)
+	}
+
+	return fmt.Sprintf("%v%s", ErrUnexpectedToken, sb.String())
+}

@@ -6,6 +6,7 @@ import (
 	"iter"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -17,7 +18,7 @@ type Env[T any] map[string]T
 
 // ParameterKey is the identifier used in expressions to refer to the implicit
 // parameter of the current expression evaluation.
-var ParameterKey = `_`
+var ParameterKey = `_` //nolint:gochecknoglobals
 
 // Cache returns a new copy of the current process environment.
 //
@@ -117,6 +118,26 @@ func WithEach(seq iter.Seq2[string, any]) pkg.Option[Env[any]] {
 	}
 }
 
+func Export(keyval ...string) string {
+	if len(keyval) > 0 {
+		keyval[0] = strings.TrimSpace(keyval[0])
+	}
+
+	//nolint:gomnd,mnd
+	switch len(keyval) {
+	case 0:
+		return ""
+	case 1:
+		return keyval[0] + "="
+	case 2:
+		return keyval[0] + "=" + strconv.Quote(keyval[1])
+	default:
+		elem := pkg.Map(slices.Values(keyval[1:]), strconv.Quote)
+
+		return keyval[0] + "=( " + strings.Join(slices.Collect(elem), " ") + " )"
+	}
+}
+
 // IsZero returns whether the receiver is nil or empty.
 func (e Env[T]) IsZero() bool { return len(e) == 0 }
 
@@ -165,13 +186,7 @@ func (e Env[T]) Environ() []string {
 	ss := make([]string, 0, len(e))
 
 	for key, val := range e.Export() {
-		var sb strings.Builder
-
-		sb.Grow(len(key) + len(val) + 1)
-		sb.WriteString(key)
-		sb.WriteRune('=')
-		sb.WriteString(val)
-		ss = append(ss, sb.String())
+		ss = append(ss, Export(key, val))
 	}
 
 	return ss
@@ -184,9 +199,10 @@ func (e Env[T]) Environ() []string {
 // if a key exists in multiple environments from the given universe,
 // they will be yielded in the order they are defined.
 //
-// Complement is useful for merging multiple environments
-// without overwriting a set of reserved keys.
-func (e Env[T]) Complement(universe ...map[string]T) iter.Seq2[string, T] {
+// See [Env.Omit] for a similar operation that yields key-value pairs from the
+// receiver [Env] instead of the given arguments, which results in a sequence
+// of key-value pairs with unique keys.
+func (e Env[T]) Complement(universe ...Env[T]) iter.Seq2[string, T] {
 	return func(yield func(string, T) bool) {
 		for _, u := range universe {
 			for key, val := range u {
@@ -202,6 +218,12 @@ func (e Env[T]) Complement(universe ...map[string]T) iter.Seq2[string, T] {
 	}
 }
 
+// Omit returns a sequence of all key-value pairs from the receiver environment
+// for which the key is not in the given list.
+//
+// See [Env.Complement] for a similar operation that yields key-value pairs
+// from the given arguments instead of the receiver [Env], which results in a
+// sequence of key-value pairs that allows for duplicate keys.
 func (e Env[T]) Omit(keys ...string) iter.Seq2[string, T] {
 	return func(yield func(string, T) bool) {
 		for key, val := range e {

@@ -2,7 +2,8 @@
 {
   "go.buildFlags": [
     "-v",
-    "-gcflags=all='-N -l'"
+    "-tags=pprof",
+    "-gcflags=github.com/ardnew/envmux/...=-N -l"
   ],
 
   "go.diagnostic.vulncheck": "Imports",
@@ -13,7 +14,10 @@
     "--config=.golangci.yml"
   ],
   "gopls": {
-    "build.buildFlags": [],
+    "build.buildFlags": [
+      "-tags=pprof",
+      "-gcflags=github.com/ardnew/envmux/...=-N -l"
+    ],
     "formatting.local": "github.com/ardnew/envmux",
     "ui.codelenses": {
       "build": true,

@@ -11,7 +11,7 @@ import (
 )
 
 // Run executes the root command and returns the result.
-func Run() Result {
+func Run() RunError {
 	node := root.Init()
 
 	return MakeResult(node, node.Command().ParseAndRun(

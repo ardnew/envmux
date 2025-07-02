@@ -2,7 +2,7 @@ package parse
 
 import (
 	"io"
-	"iter"
+	"strconv"
 	"sync"
 
 	"github.com/alecthomas/participle/v2"
@@ -19,7 +19,17 @@ var (
 	//
 	// This may change in the future to support semantic comments
 	// such as documentation, metadata, or runtime directives.
-	XX = `(?:/\*(?:[^*]|\*[^/])*\*/|(?://|#)[^\r\n]*\r?\n|\s)`
+	XX = `(?:/\*+(?:[^*]|\*[^*/])*\*+/|(?://|#)[^\r\n]*\r?\n|\s+)`
+
+	FS = `,`  // FS matches a field separator.
+	RS = `;`  // RS matches a record separator.
+	NL = `\n` // NL matches a newline character.
+
+	co, cc, cp = `<`, `>`, `\` + co + `\` + cc
+	so, sc, sp = `{`, `}`, `\` + so + `\` + sc
+	po, pc, pp = `(`, `)`, `\` + po + `\` + pc
+	ao, ac, ap = `[`, `]`, `\` + ao + `\` + ac
+	bp         = cp + sp + pp + ap
 
 	// NS matches a namespace identifier.
 	//
@@ -27,9 +37,8 @@ var (
 	// contain '\t', '\r', '\n', or syntactical punctuation.
 	//
 	// Spaces are allowed within the identifier, but all surrounding
-	// whitespace is ignored implicitly by rule precedence.
-	ns = `[^(){}\[\]<>,;=\s]`
-	NS = ns + `+(?: +` + ns + `|` + ns + `)*`
+	// whitespace is ignored implicitly per rule precedence.
+	NS = `\b(?:[^#/` + bp + `,;=\s]|/[^*/])+(?: +(?:[^#/` + bp + `,;=\s]|/[^*/])+)*\b`
 
 	// ID matches a conventional shell identifier.
 	//
@@ -93,9 +102,6 @@ var (
 	// [expr-lang]: https://github.com/expr-lang/expr
 	EX = `(?:\\.|.)?`
 
-	FS = `,` // FS matches a field separator.
-	RS = `;` // RS matches a record separator.
-
 	// AA matches any possibly-escaped non-whitespace symbol.
 	//
 	// Normally, it is an unrecoverable fatal error when the lexer encounters
@@ -113,6 +119,14 @@ var (
 
 	// EE is the escaped version of AA and is used to capture escape sequences.
 	EE = `\\` + AA
+
+	// Z0 matches no valid symbol and is used to capture invalid input.
+	//
+	// The \A anchor matches the start of a string.
+	// So, by definition, it can never match following a valid symbol.
+	//
+	// Any string at all will suffice — "nevermatch" is used for readability.
+	Z0 = `nevermatch\A`
 )
 
 // LexerGenerator is used internally to generate lexer.go, which provides
@@ -135,51 +149,124 @@ var (
 var LexerGenerator = sync.OnceValue( //nolint:gochecknoglobals
 	func() *lexer.StatefulDefinition {
 		return lexer.MustStateful(lexer.Rules{
+			`Global`:    {{Name: `XX`, Pattern: XX, Action: nil}},
+			`Invalid`:   {{Name: `Z0`, Pattern: Z0, Action: nil}},
+			`Printable`: {{Name: `AA`, Pattern: AA, Action: nil}},
+			`Escaped`:   {{Name: `EE`, Pattern: EE, Action: nil}},
+			`Wildcard`: {
+				lexer.Include(`Printable`),
+				lexer.Include(`Escaped`),
+			},
+
 			`Root`: {
-				lexer.Include(`Elidable`),
-				{Name: `NS`, Pattern: NS, Action: lexer.Push(`Namespace`)},
+				lexer.Include(`Global`),
+
+				{Name: `RS`, Pattern: RS, Action: nil},
+
+				{Name: `NS`, Pattern: NS, Action: nil},
+
+				{Name: `CO`, Pattern: `<`, Action: lexer.Push(`Composites`)},
+				{Name: `PO`, Pattern: `\(`, Action: lexer.Push(`Parameters`)},
+				{Name: `SO`, Pattern: `{`, Action: lexer.Push(`Statements`)},
 			},
 
-			`Namespace`: {
-				lexer.Include(`Elidable`),
-				{Name: `CO`, Pattern: `<`, Action: lexer.Push(`Composite`)},
-				{Name: `PO`, Pattern: `\(`, Action: lexer.Push(`Parameter`)},
-				{Name: `SO`, Pattern: `{`, Action: lexer.Push(`Statement`)},
-				lexer.Return(),
-			},
+			`Composites`: {
+				lexer.Include(`Global`),
 
-			`Composite`: {
-				lexer.Include(`Elidable`),
 				{Name: `CC`, Pattern: `>`, Action: lexer.Pop()},
+
 				{Name: `FS`, Pattern: FS, Action: nil},
+
+				{Name: `QQ`, Pattern: QQ, Action: nil},
 				{Name: `NS`, Pattern: NS, Action: nil},
 			},
 
-			`Parameter`: {
-				lexer.Include(`Elidable`),
+			`Parameters`: {
+				lexer.Include(`Global`),
+
 				{Name: `PC`, Pattern: `\)`, Action: lexer.Pop()},
+
 				{Name: `FS`, Pattern: FS, Action: nil},
+
 				{Name: `QQ`, Pattern: QQ, Action: nil},
 				{Name: `NU`, Pattern: NU, Action: nil},
 				{Name: `ID`, Pattern: ID, Action: nil},
 			},
 
-			`Statement`: {
-				lexer.Include(`Elidable`),
-				{Name: `SO`, Pattern: `{`, Action: lexer.Push(`Statement`)},
+			`Statements`: {
+				lexer.Include(`Global`),
+
+				{Name: `SO`, Pattern: `{`, Action: lexer.Push(`Statements`)},
 				{Name: `SC`, Pattern: `}`, Action: lexer.Pop()},
-				{Name: `RS`, Pattern: RS, Action: nil},
+
 				{Name: `ID`, Pattern: ID, Action: nil},
 				{Name: `OP`, Pattern: `=`, Action: nil},
 				{Name: `EX`, Pattern: EX, Action: nil},
 			},
-
-			`Elidable`:  {{Name: `XX`, Pattern: XX, Action: nil}},
-			`Printable`: {{Name: `AA`, Pattern: AA, Action: nil}},
-			`Escaped`:   {{Name: `EE`, Pattern: EE, Action: nil}},
 		})
 	},
 )
+
+//nolint:gochecknoglobals
+var symbol = sync.OnceValue(
+	func() func(token string) lexer.TokenType {
+		sym := LexerGenerator().Symbols()
+
+		return func(token string) lexer.TokenType {
+			typ, ok := sym[token]
+			if !ok {
+				panic("invalid lexer symbol: " + strconv.Quote(token))
+			}
+
+			return typ
+		}
+	},
+)
+
+// statementTerminator is the reason for delimiting the end of a statement.
+type terminate byte
+
+const (
+	unterminated terminate = iota
+	atError
+	atEOF
+	atNL
+	atRS
+	atSC
+)
+
+// consume returns a function that discards all tokens from the given lexer
+// whose type matches any provided symbol and returns before consuming the next
+// token that does not match any provided symbol.
+//
+// EOF will never be consumed even if it is one of the given symbols.
+// The returned function will return immediately before consuming EOF and
+// returns whether more tokens are available (next token is not EOF).
+func consume(lex *lexer.PeekingLexer, sym ...string) func() (eof bool) {
+	table := make(map[lexer.TokenType]struct{}, len(sym))
+
+	for _, s := range sym {
+		table[symbol()(s)] = struct{}{}
+	}
+
+	halt := func(tok *lexer.Token) bool {
+		if tok == nil || tok.EOF() {
+			return true
+		}
+
+		_, discard := table[tok.Type]
+
+		return !discard
+	}
+
+	return func() bool {
+		for !halt(lex.Peek()) {
+			_ = lex.Next() // Discard the token.
+		}
+
+		return !lex.Peek().EOF()
+	}
+}
 
 // AST is the root node of the parsed configuration file.
 //
@@ -189,64 +276,7 @@ type AST struct {
 	EndPos lexer.Position // EndPos records the end position of the node.
 	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
 
-	List []*Namespace `parser:"( @@ XX* )*"`
-}
-
-// Namespace associates a composition of environment variable definitions with
-// a namespace identifier. Variable definitions are expressed using the entire
-// [expr-lang] grammar.
-//
-// [expr-lang]: https://github.com/expr-lang/expr
-type Namespace struct {
-	Pos    lexer.Position // Pos records the start position of the node.
-	EndPos lexer.Position // EndPos records the end position of the node.
-	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
-
-	Name string       `parser:"XX* @NS"`
-	Def  string       `parser:"XX* ("`
-	Com  []*Composite `parser:"( XX* CO XX* ( @@ ( XX* FS @@ )* )? XX* CC )?"`
-	Par  []*Parameter `parser:"( XX* PO XX* ( @@ ( XX* FS @@ )* )? XX* PC )?"`
-	Sta  []*Statement `parser:"( XX* SO XX* ( @@   XX*          )* XX* SC )?"`
-	End  string       `parser:"XX* )!"`
-}
-
-// Composite represents a composition node in the AST.
-type Composite struct {
-	Pos    lexer.Position // Pos records the start position of the node.
-	EndPos lexer.Position // EndPos records the end position of the node.
-	Tokens []lexer.Token  // Tokens records the tokens consumed by the node.
-
-	ID string `parser:"@NS"`
-}
-
-// Parameter represents a parameter node in the AST.
-type Parameter struct {
-	Pos    lexer.Position // Pos records the start position of the node.
-	EndPos lexer.Position // EndPos records the end position of the node.
-	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
-
-	ID string `parser:"@( QQ | NU | ID )"`
-}
-
-// Statement represents a statement node in the AST.
-//
-// It assigns or amends value to a variable identifier in a namespace.
-// The value can be a literal or an evaluated expression.
-//
-// Expressions are evaluated in the context of the enclosing namespace
-// and the implicit parameter (identified with [vars.ParameterKey])
-// for each parameter to the namespace.
-//
-// Each parameter's evaluation is assigned to the variable based on the formal
-// syntax used by the parameter.
-type Statement struct {
-	Pos    lexer.Position // Pos records the start position of the node.
-	EndPos lexer.Position // EndPos records the end position of the node.
-	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
-
-	ID string `parser:"@ID"`
-	Op string `parser:"XX* @OP"`
-	Ex *Expr  `parser:"XX* @@"`
+	Defs *Namespaces `parser:"@@"`
 }
 
 // Options are the default participle options used to build the parser.
@@ -266,51 +296,6 @@ func TraceOptions(w io.Writer) []participle.ParseOption {
 	opt[len(ParseOptions)] = participle.Trace(w)
 
 	return opt
-}
-
-// Compositions returns a sequence of unique namespace identifiers composing
-// the Namespace.
-// Duplicate names are removed; only the first occurrence is retained.
-func (s *Namespace) Compositions() iter.Seq[string] {
-	if s == nil {
-		return nil
-	}
-
-	unique := make(pkg.Unique[string])
-
-	return func(yield func(string) bool) {
-		for _, v := range s.Com {
-			if unique.Set(v.ID) && !yield(v.ID) {
-				return
-			}
-		}
-	}
-}
-
-// Parameters returns a sequence of unique parameters from the [Namespace]
-// appended with the given arguments.
-// The additional names are appended to the namespace's [Parameter] slice.
-// Duplicate names are removed; only the first occurrence is retained.
-func (s *Namespace) Parameters(appends ...string) iter.Seq[string] {
-	if s == nil {
-		return nil
-	}
-
-	unique := make(pkg.Unique[string])
-
-	return func(yield func(string) bool) {
-		for _, v := range s.Par {
-			if unique.Set(v.ID) && !yield(v.ID) {
-				return
-			}
-		}
-
-		for _, append := range appends {
-			if unique.Set(append) && !yield(append) {
-				return
-			}
-		}
-	}
 }
 
 // build returns a singleton parser for the AST type.
