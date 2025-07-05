@@ -75,6 +75,16 @@ func (n *Namespace) parse(lex *lexer.PeekingLexer) error {
 		if !advance() {
 			return nil
 		}
+
+		if peek := lex.Peek(); peek.Type == symbol()(`CO`) {
+			return &pkg.UnexpectedTokenError{
+				Tok: peek,
+				Msg: []string{
+					`composites "` + co + `…` + cc + `" must be declared before ` +
+						`parameters "` + po + `…` + pc + `"`,
+				},
+			}
+		}
 	}
 
 	if !advance() {
@@ -88,6 +98,27 @@ func (n *Namespace) parse(lex *lexer.PeekingLexer) error {
 
 		if !advance() {
 			return nil
+		}
+
+		//nolint:exhaustive
+		switch peek := lex.Peek(); peek.Type {
+		case symbol()(`PO`):
+			return &pkg.UnexpectedTokenError{
+				Tok: peek,
+				Msg: []string{
+					`parameters "` + po + `…` + pc + `" must be declared before ` +
+						`statements "` + so + `…` + sc + `"`,
+				},
+			}
+
+		case symbol()(`CO`):
+			return &pkg.UnexpectedTokenError{
+				Tok: peek,
+				Msg: []string{
+					`composites "` + co + `…` + cc + `" must be declared before ` +
+						`statements "` + so + `…` + sc + `"`,
+				},
+			}
 		}
 	}
 

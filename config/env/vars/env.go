@@ -45,6 +45,31 @@ var (
 				"hostname": getHostname(),
 				"user":     getUser(),
 				"shell":    getShell(),
+
+				// Functions
+				"join": join,
+				"env": map[string]any{
+					"get":     envGet,
+					"set":     envSet,
+					"unset":   envUnset,
+					"exists":  envExists,
+					"isSet":   envIsSet,
+					"prepend": envPrepend,
+					"append":  envAppend,
+				},
+				"file": map[string]any{
+					"exists":    fileExists,
+					"isDir":     fileIsDir,
+					"isRegular": fileIsRegular,
+					"isSymlink": fileIsSymlink,
+					"perms":     filePerms,
+					"stat":      fileStat,
+				},
+				"path": map[string]any{
+					"abs": pathAbs,
+					"cat": pathCat,
+					"rel": pathRel,
+				},
 			}
 		})
 

@@ -40,7 +40,7 @@ func (m Model) Parse(r io.Reader) (Model, error) {
 		return Model{}, err
 	}
 
-	return pkg.Make(WithAST(ast)), nil
+	return pkg.Wrap(m, WithAST(ast)), nil
 }
 
 // WithAST is a functional [pkg.Option] that installs the namespace

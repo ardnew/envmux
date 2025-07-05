@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 
 	"github.com/ardnew/envmux/cmd/envmux/cli"
@@ -8,7 +9,12 @@ import (
 
 // main is the entry point for the envmux application.
 func main() {
-	result := cli.Run()
+	var result cli.RunError
+
+	ctx := context.Background()
+	defer exit(ctx, &result)
+
+	result = cli.Run(ctx)
 
 	if result.Help != "" {
 		println(result.Help)
@@ -17,6 +23,9 @@ func main() {
 	if result.Err != nil {
 		println("error:", result.Err.Error())
 	}
+}
 
-	os.Exit(result.Code)
+func exit(ctx context.Context, runErr *cli.RunError) {
+	ctx.Done()
+	os.Exit(runErr.Code)
 }

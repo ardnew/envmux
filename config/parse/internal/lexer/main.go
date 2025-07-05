@@ -30,7 +30,7 @@ func main() {
 	cmd := exec.CommandContext(context.Background(), "jq")
 	cmd.Stdin = bytes.NewReader(b)
 
-	out, err := os.Create(arg)
+	out, err := os.OpenFile(arg, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		panic(err)
 	}

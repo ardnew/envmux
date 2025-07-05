@@ -206,7 +206,9 @@ func (r Root) Init() cmd.Node { //nolint:ireturn
 					env.WithEvalRequiresDef(r.ReqDef),
 				).Parse(io.MultiReader(src...))
 				if err != nil {
-					return &pkg.IncompleteParseError{Err: err, Src: r.Source}
+					return &pkg.IncompleteParseError{
+						Err: err, Src: r.Source, Lvl: r.VerboseLevel(),
+					}
 				}
 
 				if len(args) == 0 {

@@ -12,10 +12,10 @@ import (
 
 // Run executes the root command and returns the result.
 // Entry point for the CLI application.
-func Run() RunError {
+func Run(ctx context.Context) RunError {
 	node := root.Init()
 
 	return MakeResult(node, node.Command().ParseAndRun(
-		context.Background(), os.Args[1:], cmd.FlagOptions()...,
+		ctx, os.Args[1:], cmd.FlagOptions()...,
 	))
 }

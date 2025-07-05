@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 //nolint:gochecknoglobals
@@ -53,7 +54,7 @@ var ConfigPrefix = func(cmd string) string {
 		id = exe
 	}
 
-	id = filepath.Base(id)
+	id = strings.TrimSuffix(filepath.Base(id), ".test")
 
 	substitute := []struct {
 		*regexp.Regexp

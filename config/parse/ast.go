@@ -20,7 +20,7 @@ var (
 	//
 	// This may change in the future to support semantic comments
 	// such as documentation, metadata, or runtime directives.
-	XX = `(?:/\*+(?:[^*]|\*[^*/])*\*+/|(?://|#)[^\r\n]*\r?\n|\s+)`
+	XX = `(?:/\*+(?:[^*]|\*[^*/])*\*+/|//[^\r\n]*(?:\r?\n|$)|\s+)`
 
 	FS = `,`  // FS matches a field separator.
 	RS = `;`  // RS matches a record separator.
@@ -101,7 +101,7 @@ var (
 	// [participle.Parseable].
 	//
 	// [expr-lang]: https://github.com/expr-lang/expr
-	EX = `(?:\\.|.)?`
+	EX = `(?:\\.|.|$)`
 
 	// AA matches any possibly-escaped non-whitespace symbol.
 	//
@@ -167,15 +167,15 @@ var LexerGenerator = sync.OnceValue( //nolint:gochecknoglobals
 
 				{Name: `NS`, Pattern: NS, Action: nil},
 
-				{Name: `CO`, Pattern: `<`, Action: lexer.Push(`Composites`)},
-				{Name: `PO`, Pattern: `\(`, Action: lexer.Push(`Parameters`)},
-				{Name: `SO`, Pattern: `{`, Action: lexer.Push(`Statements`)},
+				{Name: `CO`, Pattern: `\` + co, Action: lexer.Push(`Composites`)},
+				{Name: `PO`, Pattern: `\` + po, Action: lexer.Push(`Parameters`)},
+				{Name: `SO`, Pattern: `\` + so, Action: lexer.Push(`Statements`)},
 			},
 
 			`Composites`: {
 				lexer.Include(`Global`),
 
-				{Name: `CC`, Pattern: `>`, Action: lexer.Pop()},
+				{Name: `CC`, Pattern: `\` + cc, Action: lexer.Pop()},
 
 				{Name: `FS`, Pattern: FS, Action: nil},
 
@@ -186,7 +186,7 @@ var LexerGenerator = sync.OnceValue( //nolint:gochecknoglobals
 			`Parameters`: {
 				lexer.Include(`Global`),
 
-				{Name: `PC`, Pattern: `\)`, Action: lexer.Pop()},
+				{Name: `PC`, Pattern: `\` + pc, Action: lexer.Pop()},
 
 				{Name: `FS`, Pattern: FS, Action: nil},
 
@@ -198,8 +198,8 @@ var LexerGenerator = sync.OnceValue( //nolint:gochecknoglobals
 			`Statements`: {
 				lexer.Include(`Global`),
 
-				{Name: `SO`, Pattern: `{`, Action: lexer.Push(`Statements`)},
-				{Name: `SC`, Pattern: `}`, Action: lexer.Pop()},
+				{Name: `SO`, Pattern: `\` + so, Action: lexer.Push(`Statements`)},
+				{Name: `SC`, Pattern: `\` + sc, Action: lexer.Pop()},
 
 				{Name: `ID`, Pattern: ID, Action: nil},
 				{Name: `OP`, Pattern: `=`, Action: nil},
@@ -289,7 +289,7 @@ var Options = []participle.Option{participle.Lexer(ConfigLexer)}
 // ParseOptions are the default participle parse options used to parse the AST.
 //
 //nolint:gochecknoglobals
-var ParseOptions = []participle.ParseOption{participle.AllowTrailing(true)}
+var ParseOptions = []participle.ParseOption{participle.AllowTrailing(false)}
 
 func TraceOptions(w io.Writer) []participle.ParseOption {
 	opt := make([]participle.ParseOption, len(ParseOptions)+1)

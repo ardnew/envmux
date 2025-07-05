@@ -104,21 +104,28 @@ func makeBracketParser(
 			case atError:
 				return err
 
-			case atEOF, atNL, atRS:
+			case atNL, atRS:
+				_ = lex.Next() // Consume the token.
+
+				if len(stack) > 0 {
+					// If the stack is not empty, NL/RS tokens are considered
+					// part of the expression.
+					continue
+				}
+
+				// Otherwise, we treat them as statement terminators.
+				return nil
+
+			case atEOF:
 				_ = lex.Next() // Consume the token.
 
 				fallthrough
 
 			case atSC:
 				if len(stack) > 0 {
-					return &pkg.UnexpectedTokenError{
-						Tok: tok,
-						Msg: []string{
-							`expected close-bracket ` + strconv.Quote(
-								stack[len(stack)-1].get().close,
-							),
-						},
-					}
+					_ = lex.Next() // Consume the token.
+
+					continue
 				}
 
 				return nil // No unclosed brackets, we are done.

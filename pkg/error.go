@@ -86,6 +86,7 @@ var (
 type IncompleteParseError struct {
 	Err error
 	Src []string
+	Lvl int // Verbose level for error reporting
 }
 
 func (e *IncompleteParseError) Error() string {
@@ -120,17 +121,37 @@ func (e *IncompleteParseError) Error() string {
 		p *participle.ParseError
 	)
 
-	var msg string
+	var msg, pos string
 
 	switch {
 	case errors.As(e.Err, &x):
-		msg = fmt.Sprintf(" at %s%v", ref, x)
+		if e.Lvl > 0 {
+			pos = fmt.Sprintf(" at %s%s", ref, x.position())
+		}
+
+		msg = fmt.Sprintf("%s: %v", pos, x)
+
 	case errors.As(e.Err, &n):
-		msg = fmt.Sprintf(" at %s%v", ref, n)
+		if e.Lvl > 0 {
+			pos = fmt.Sprintf(" at %s%s", ref, n.position())
+		}
+
+		msg = fmt.Sprintf("%s: %v", pos, n)
+
 	case errors.As(e.Err, &p):
-		msg = fmt.Sprintf(" at %s[%d:%d]: %s", ref, p.Pos.Line, p.Pos.Column, p.Msg)
+		if e.Lvl > 0 {
+			pos = fmt.Sprintf(" at %s[%d:%d]", ref, p.Pos.Line, p.Pos.Column)
+		}
+
+		msg = fmt.Sprintf("%s: %v", pos, p)
+
 	case src.Len() > 0:
-		msg = fmt.Sprintf(" at %s: %v", ref, e.Err)
+		if e.Lvl > 0 {
+			pos = " at " + ref
+		}
+
+		msg = fmt.Sprintf("%s: %v", pos, e.Err)
+
 	default:
 		msg = fmt.Sprintf(": %v", e.Err)
 	}
@@ -144,17 +165,26 @@ type NamespaceError struct {
 }
 
 func (e *NamespaceError) Error() string {
-	var sp, id string
+	var id string
 	if e.ID != "" {
 		id = fmt.Sprintf(" (in namespace %q)", e.ID)
 	}
 
 	ee, ue := e.Err, new(UnexpectedTokenError)
 	if errors.As(e.Err, &ue) {
-		ee, sp = ue, fmt.Sprintf("[%d:%d]", ue.Tok.Pos.Line, ue.Tok.Pos.Column)
+		ee = ue
 	}
 
-	return fmt.Sprintf("%s: %v%s", sp, ee, id)
+	return fmt.Sprintf("%v%s", ee, id)
+}
+
+func (e *NamespaceError) position() string {
+	ue := new(UnexpectedTokenError)
+	if errors.As(e.Err, &ue) {
+		return fmt.Sprintf("[%d:%d]", ue.Tok.Pos.Line, ue.Tok.Pos.Column)
+	}
+
+	return ""
 }
 
 type ExpressionError struct {
@@ -164,7 +194,7 @@ type ExpressionError struct {
 }
 
 func (e *ExpressionError) Error() string {
-	var pp, id, ap string
+	var id, ap string
 	if e.NS != "" {
 		id = fmt.Sprintf(" (expression %q in namespace %q)", e.Var, e.NS)
 	}
@@ -172,11 +202,19 @@ func (e *ExpressionError) Error() string {
 	ee, ue := e.Err, new(file.Error)
 	if errors.As(e.Err, &ue) {
 		ee = fmt.Errorf("%w: %s", ErrInvalidExpression, ue.Message)
-		pp = fmt.Sprintf("[%d:%d]", ue.Line, ue.Column)
 		ap = "\t" + strings.ReplaceAll(ue.Snippet, "\n", "\n\t")
 	}
 
-	return fmt.Sprintf("%s: %v%s%s", pp, ee, id, ap)
+	return fmt.Sprintf("%v%s%s", ee, id, ap)
+}
+
+func (e *ExpressionError) position() string {
+	ue := new(file.Error)
+	if errors.As(e.Err, &ue) {
+		return fmt.Sprintf("[%d:%d]", ue.Line, ue.Column)
+	}
+
+	return ""
 }
 
 type UnexpectedTokenError struct {

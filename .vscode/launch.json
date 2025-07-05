@@ -8,10 +8,11 @@
       "type": "go",
       "request": "launch",
       "mode": "debug",
+      "preLaunchTask": "generate: lexer",
       "program": "./cmd/envmux",
       "buildFlags": [
         "-tags=pprof",
-        "-gcflags=github.com/ardnew/envmux/...=-N -l" // -m for escape analysis
+        "-gcflags=-N -l" // -m for escape analysis
       ],
       "env": {},
       "args": [],
@@ -23,6 +24,7 @@
       "type": "go",
       "request": "launch",
       "mode": "test",
+      "preLaunchTask": "generate: lexer",
       "program": "./cmd/envmux",
       "env": {},
       "args": [
@@ -37,19 +39,23 @@
       "type": "go",
       "request": "launch",
       "mode": "debug",
+      "preLaunchTask": "generate: lexer",
       "program": "./cmd/envmux",
       "buildFlags": [
         "-tags=pprof",
-        "-gcflags=github.com/ardnew/envmux/...=-N -l" // -m for escape analysis
+        "-gcflags=-N -l" // -m for escape analysis
       ],
       "env": {},
       "args": [
         "-p",
         "trace=.",
+        "-i",
         "-j",
         "1",
+        "-v",
+        "-u",
         "-s",
-        "=d{x=1}",
+        "=default{x=$env[\"FOO\"]"
       ],
       "cwd": "${workspaceFolder}",
       "stopOnEntry": false,
@@ -59,19 +65,21 @@
       "type": "go",
       "request": "launch",
       "mode": "debug",
+      "preLaunchTask": "generate: lexer",
       "program": "./cmd/envmux",
       "buildFlags": [
         "-tags=pprof",
-        "-gcflags=github.com/ardnew/envmux/...=-N -l" // -m for escape analysis
+        "-gcflags=-N -l" // -m for escape analysis
       ],
       "env": {},
       "args": [
         "-j",
         "1",
         "-i",
+        "-u",
         "-s",
-        "=default {\n  foo = 1+2;\n}\n; foo<default> {\n  bar = 3+4;\n}\n",
-        "foo"
+        "=default{foo=1+2} custom<default>{w=\"ok\";bar=(let p=foo+w; p+\"xxx\")|upper()}",
+        "custom",
       ],
       "cwd": "${workspaceFolder}",
       "stopOnEntry": false,
