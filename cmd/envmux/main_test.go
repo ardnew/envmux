@@ -53,7 +53,7 @@ verbose true
 	stderr := expected{contains: []string{
 		`"<EOF>" AST
   "<EOF>" capture{}
-    "<EOF>" parse.Namespaces`,
+    "<EOF>" parse.namespaces`,
 	}}
 
 	run(t, stdout, stderr, "--config", configPath, "-i")
