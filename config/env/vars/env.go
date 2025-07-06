@@ -47,28 +47,23 @@ var (
 				"shell":    getShell(),
 
 				// Functions
-				"join": join,
-				"env": map[string]any{
-					"get":     envGet,
-					"set":     envSet,
-					"unset":   envUnset,
-					"exists":  envExists,
-					"isSet":   envIsSet,
-					"prepend": envPrepend,
-					"append":  envAppend,
-				},
+				"cwd": cwd,
 				"file": map[string]any{
 					"exists":    fileExists,
 					"isDir":     fileIsDir,
 					"isRegular": fileIsRegular,
 					"isSymlink": fileIsSymlink,
-					"perms":     filePerms,
+					"perms":     filePerm,
 					"stat":      fileStat,
 				},
 				"path": map[string]any{
 					"abs": pathAbs,
 					"cat": pathCat,
 					"rel": pathRel,
+				},
+				"mung": map[string]any{
+					"prefix":   mungPrefix,
+					"prefixif": mungPrefixIf,
 				},
 			}
 		})
@@ -106,7 +101,7 @@ func WithContext(ctx context.Context) pkg.Option[Env[any]] {
 	}
 }
 
-func WithExports(env ...map[string]string) pkg.Option[Env[any]] {
+func WithExports(env ...map[string]any) pkg.Option[Env[any]] {
 	add := map[string]any{}
 
 	for _, e := range env {
@@ -138,23 +133,82 @@ func WithEach(seq iter.Seq2[string, any]) pkg.Option[Env[any]] {
 	}
 }
 
-func Export(keyval ...string) string {
-	if len(keyval) > 0 {
-		keyval[0] = strings.TrimSpace(keyval[0])
+func Export(key string, value any) string {
+	var sb strings.Builder
+
+	sb.WriteString(strings.TrimSpace(key))
+	sb.WriteRune('=')
+	sb.WriteString(format(value))
+
+	return sb.String()
+}
+
+func formatSlice[T any](
+	slice []T,
+	lhs, rhs, delim string,
+	format func(T) string,
+) string {
+	var sb strings.Builder
+
+	sb.WriteString(lhs)
+
+	for i, item := range slice {
+		if i > 0 {
+			sb.WriteString(delim)
+		}
+
+		sb.WriteString(format(item))
 	}
 
-	//nolint:gomnd,mnd
-	switch len(keyval) {
-	case 0:
-		return ""
-	case 1:
-		return keyval[0] + "="
-	case 2:
-		return keyval[0] + "=" + strconv.Quote(keyval[1])
-	default:
-		elem := pkg.Map(slices.Values(keyval[1:]), strconv.Quote)
+	sb.WriteString(rhs)
 
-		return keyval[0] + "=( " + strings.Join(slices.Collect(elem), " ") + " )"
+	return sb.String()
+}
+
+func format(value any) string {
+	switch v := any(value).(type) {
+	case nil:
+		return `""`
+
+	case fmt.Formatter:
+		return fmt.Sprint(v)
+
+	case fmt.Stringer:
+		return v.String()
+
+	case fmt.GoStringer:
+		return v.GoString()
+
+	case error:
+		return v.Error()
+
+	case bool, int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64,
+		float32, float64,
+		complex64, complex128:
+		return fmt.Sprint(v)
+
+	case string:
+		return strconv.Quote(v)
+
+	case []byte:
+		if str, ok := pkg.ParseASCII(v); ok {
+			return strconv.Quote(str)
+		} else {
+			return fmt.Sprintf("%+q", v)
+		}
+
+	case []bool, []int, []int8, []int16, []int32, []int64,
+		[]uint, []uint16, []uint32, []uint64,
+		[]float32, []float64,
+		[]complex64, []complex128:
+		return formatSlice(v.([]any), "[ ", " ]", ", ", format)
+
+	case []string:
+		return formatSlice(v, "[ ", " ]", ", ", strconv.Quote)
+
+	default:
+		return fmt.Sprintf("%+v", v)
 	}
 }
 
@@ -163,49 +217,12 @@ func (e Env[T]) IsZero() bool { return len(e) == 0 }
 
 func (e Env[T]) AsMap() map[string]T { return map[string]T(e) }
 
-// Export returns a new environment with all values converted to strings.
-//
-// If a format verb is provided, the first verb is used to format each value.
-// The format verb is passed to [fmt.Sprintf].
-func (e Env[T]) Export(verb ...string) Env[string] {
-	ss := make(Env[string], len(e))
-	// "Fast"-path for a pre-defined format.
-	if len(verb) > 0 {
-		for key, val := range e {
-			ss[key] = fmt.Sprintf(verb[0], val)
-		}
-
-		return ss
-	}
-
-	for key, val := range e {
-		switch v := any(val).(type) {
-		case string:
-			ss[key] = v
-		case []byte:
-			ss[key] = string(v)
-		case fmt.Formatter:
-			ss[key] = fmt.Sprint(v)
-		case fmt.Stringer:
-			ss[key] = v.String()
-		case error:
-			ss[key] = v.Error()
-		case fmt.GoStringer:
-			ss[key] = v.GoString()
-		default:
-			ss[key] = fmt.Sprint(v)
-		}
-	}
-
-	return ss
-}
-
 // Environ returns a slice of strings for each element in the environment
 // in the format "key=value".
 func (e Env[T]) Environ() []string {
 	ss := make([]string, 0, len(e))
 
-	for key, val := range e.Export() {
+	for key, val := range e {
 		ss = append(ss, Export(key, val))
 	}
 

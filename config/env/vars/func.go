@@ -3,59 +3,17 @@ package vars
 import (
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
+
+	"github.com/ardnew/mung"
 )
 
-func join(delim string, elem ...string) string {
-	return strings.Join(elem, delim)
-}
-
-func envGet(key string) string {
-	return os.Getenv(key)
-}
-
-func envSet(key, value string) error {
-	return os.Setenv(key, value)
-}
-
-func envUnset(key string) error {
-	return os.Unsetenv(key)
-}
-
-func envExists(key string) bool {
-	_, ok := os.LookupEnv(key)
-
-	return ok
-}
-
-func envIsSet(key string) bool {
-	value := os.Getenv(key)
-	set, err := strconv.ParseBool(value)
-
-	return err == nil && set
-}
-
-func envPrepend(key, delim string, value ...string) error {
-	current := strings.Trim(envGet(key), delim)
-	prepend := strings.Trim(join(delim, value...), delim)
-
-	if current == "" {
-		return envSet(key, prepend)
+func cwd() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return pathAbs(".")
 	}
 
-	return envSet(key, prepend+delim+current)
-}
-
-func envAppend(key, delim string, value ...string) error {
-	current := strings.Trim(envGet(key), delim)
-	appends := strings.Trim(join(delim, value...), delim)
-
-	if current == "" {
-		return envSet(key, appends)
-	}
-
-	return envSet(key, current+delim+appends)
+	return cwd
 }
 
 func fileExists(path string) bool {
@@ -91,13 +49,13 @@ func fileIsSymlink(path string) bool {
 	return info.Mode()&os.ModeSymlink != 0
 }
 
-func filePerms(path string) string {
+func filePerm(path string) uint32 {
 	info, err := os.Stat(path)
 	if err != nil {
-		return ""
+		return 0
 	}
 
-	return info.Mode().String()
+	return uint32(info.Mode().Perm())
 }
 
 func fileStat(path string) uint32 {
@@ -129,4 +87,25 @@ func pathRel(from, to string) string {
 	}
 
 	return p
+}
+
+func mungPrefix(key string, prefix ...string) string {
+	return mung.Make(
+		mung.WithSubjectItems(key),
+		mung.WithDelim(string(os.PathListSeparator)),
+		mung.WithPrefixItems(prefix...),
+	).String()
+}
+
+func mungPrefixIf(
+	key string,
+	predicate func(string) bool,
+	prefix ...string,
+) string {
+	return mung.Make(
+		mung.WithSubjectItems(key),
+		mung.WithDelim(string(os.PathListSeparator)),
+		mung.WithPrefixItems(prefix...),
+		mung.WithPredicate(predicate),
+	).String()
 }

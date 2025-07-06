@@ -72,21 +72,21 @@ func TestNamespaceDefinitions(t *testing.T) {
 			name:     "basic_default_namespace",
 			args:     []string{"-i", "-j", "1", "-s", "-"},
 			input:    `default{foo=1+2;}`,
-			out:      expected{contains: []string{`foo="3"`}},
+			out:      expected{contains: []string{`foo=3`}},
 			expectOK: true,
 		},
 		{
 			name:     "default_with_spaces",
 			args:     []string{"-i", "-j", "1", "-s", "-"},
 			input:    `default { foo = 1+2; }`,
-			out:      expected{contains: []string{`foo="3"`}},
+			out:      expected{contains: []string{`foo=3`}},
 			expectOK: true,
 		},
 		{
 			name:     "default_with_empty_parens",
 			args:     []string{"-i", "-j", "1", "-s", "-"},
 			input:    `default<>(){ foo = 1+2; }`,
-			out:      expected{contains: []string{`foo="3"`}},
+			out:      expected{contains: []string{`foo=3`}},
 			expectOK: true,
 		},
 		{
@@ -109,14 +109,14 @@ func TestNamespaceDefinitions(t *testing.T) {
 			name:     "default_with_block_comment",
 			args:     []string{"-i", "-j", "1", "-s", "-"},
 			input:    `default <> () { foo = 1+2; } /* comment */`,
-			out:      expected{contains: []string{`foo="3"`}},
+			out:      expected{contains: []string{`foo=3`}},
 			expectOK: true,
 		},
 		{
 			name:     "default_with_line_comment",
 			args:     []string{"-i", "-j", "1", "-s", "-"},
 			input:    `default <> () { foo = 1+2; } // comment`,
-			out:      expected{contains: []string{`foo="3"`}},
+			out:      expected{contains: []string{`foo=3`}},
 			expectOK: true,
 		},
 		{
@@ -200,7 +200,7 @@ custom { /* comment */ foo = 1+2; }`,
 			args: []string{"-i", "-j", "1", "-s", "-", "custom"},
 			input: `default /* comment */ { foo = "abc"; }
 /* comment */ custom { foo = 1+2; }`,
-			out:      expected{contains: []string{`foo="3"`}},
+			out:      expected{contains: []string{`foo=3`}},
 			expectOK: true,
 		},
 		{
@@ -216,7 +216,7 @@ custom { foo = 1+2 /* comment */; }`,
 			args: []string{"-i", "-j", "1", "-s", "-", "custom"},
 			input: `default { foo = "abc"; }
 custom <default> { foo = 1+2; /* comment */ }`,
-			out:      expected{contains: []string{`foo="3"`}},
+			out:      expected{contains: []string{`foo=3`}},
 			expectOK: true,
 		},
 	}
@@ -272,7 +272,7 @@ custom { foo = 1+2; bar = "xyz"; }`,
 			args: []string{"-i", "-j", "1", "-s", "-", "custom"},
 			input: `default { foo = "abc"; }
 custom <default> { foo = 1+2; bar = "xyz"; }`,
-			out:      expected{contains: []string{`foo="3"`, `bar="xyz"`}},
+			out:      expected{contains: []string{`foo=3`, `bar="xyz"`}},
 			expectOK: true,
 		},
 		{
@@ -288,7 +288,7 @@ custom { foo = 1+2; }`,
 			args: []string{"-i", "-j", "1", "-s", "-", "custom"},
 			input: `default { foo = "abc"; bar = "xyz"; }
 custom <default> { foo = 1+2; }`,
-			out:      expected{contains: []string{`foo="3"`, `bar="xyz"`}},
+			out:      expected{contains: []string{`foo=3`, `bar="xyz"`}},
 			expectOK: true,
 		},
 		{
@@ -296,7 +296,7 @@ custom <default> { foo = 1+2; }`,
 			args: []string{"-i", "-j", "1", "-s", "-"},
 			input: `default <custom> { foo = "abc"; bar = 2+3; }
 custom { foo = 1+2; bar = "xyz"; }`,
-			out:      expected{contains: []string{`foo="abc"`, `bar="5"`}},
+			out:      expected{contains: []string{`foo="abc"`, `bar=5`}},
 			expectOK: true,
 		},
 		{
@@ -304,7 +304,7 @@ custom { foo = 1+2; bar = "xyz"; }`,
 			args: []string{"-i", "-j", "1", "-s", "-", "custom"},
 			input: `default { foo = "abc"; bar = 2+3; }
 custom <default> { foo = 1+2; bar = "xyz"; }`,
-			out:      expected{contains: []string{`foo="3"`, `bar="xyz"`}},
+			out:      expected{contains: []string{`foo=3`, `bar="xyz"`}},
 			expectOK: true,
 		},
 	}

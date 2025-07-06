@@ -176,6 +176,7 @@ var LexerGenerator = sync.OnceValue( //nolint:gochecknoglobals
 				lexer.Include(`Global`),
 
 				{Name: `CC`, Pattern: `\` + cc, Action: lexer.Pop()},
+				{Name: `PO`, Pattern: `\` + po, Action: lexer.Push(`Parameters`)},
 
 				{Name: `FS`, Pattern: FS, Action: nil},
 
@@ -278,7 +279,7 @@ type AST struct {
 	EndPos lexer.Position // EndPos records the end position of the node.
 	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
 
-	Defs *Namespaces `parser:"@@"`
+	Defs *namespaces `parser:"@@"`
 }
 
 // Options are the default participle options used to build the parser.

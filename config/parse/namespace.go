@@ -1,33 +1,56 @@
 package parse
 
 import (
+	"iter"
+
 	"github.com/alecthomas/participle/v2/lexer"
 
 	"github.com/ardnew/envmux/pkg"
 )
 
-// Namespace associates a composition of environment variable definitions with
+// Namespace is a container for the semantic information of a Namespace node.
+type Namespace struct {
+	ID string
+
+	Com composites
+	Par parameters
+	Sta statements
+}
+
+// namespace associates a composition of environment variable definitions with
 // a namespace identifier.
 //
 // Variable definitions are expressed entirely with the [expr-lang] grammar.
 //
 // [expr-lang]: https://github.com/expr-lang/expr
-type Namespace struct {
+type namespace struct {
 	Pos    lexer.Position // Pos records the start position of the node.
 	EndPos lexer.Position // EndPos records the end position of the node.
 	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
 
-	ID string
+	Namespace
+}
 
-	Com Composites
-	Par Parameters
-	Sta Statements
+func (n *namespace) Composites() iter.Seq[Composite] {
+	if n == nil {
+		return nil
+	}
+
+	return n.Com.Seq()
+}
+
+func (n *namespace) Parameters() iter.Seq[Parameter] {
+	if n == nil {
+		return nil
+	}
+
+	return nil
 }
 
 // Parse parses an expression using the provided lexer
 // and stores the unevaluated source code in the Expr's Src field.
 // Returns an error if parsing fails.
-func (n *Namespace) Parse(lex *lexer.PeekingLexer) error {
+func (n *namespace) Parse(lex *lexer.PeekingLexer) error {
 	err := n.parse(lex)
 	if err != nil {
 		return &pkg.NamespaceError{ID: n.ID, Err: err}
@@ -36,7 +59,7 @@ func (n *Namespace) Parse(lex *lexer.PeekingLexer) error {
 	return nil
 }
 
-func (n *Namespace) parse(lex *lexer.PeekingLexer) error {
+func (n *namespace) parse(lex *lexer.PeekingLexer) error {
 	advance := consume(lex, `XX`)
 
 	tok := lex.Next()
@@ -125,16 +148,40 @@ func (n *Namespace) parse(lex *lexer.PeekingLexer) error {
 	return nil
 }
 
-// Namespaces represents a sequence of Namespace nodes in the AST.
-type Namespaces struct {
+// namespaces represents a sequence of Namespace nodes in the AST.
+type namespaces struct {
 	Pos    lexer.Position // Pos records the start position of the node.
 	EndPos lexer.Position // EndPos records the end position of the node.
 	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
 
-	List []*Namespace
+	list []*namespace
 }
 
-func (n *Namespaces) Parse(lex *lexer.PeekingLexer) error {
+// Len returns the number of namespaces in the sequence.
+func (n *namespaces) Len() int {
+	if n == nil {
+		return 0
+	}
+
+	return len(n.list)
+}
+
+// Seq returns the receiver's sequence of namespaces.
+func (n *namespaces) Seq() iter.Seq[Namespace] {
+	if n == nil {
+		return nil
+	}
+
+	return func(yield func(Namespace) bool) {
+		for _, v := range n.list {
+			if !yield(v.Namespace) {
+				return
+			}
+		}
+	}
+}
+
+func (n *namespaces) Parse(lex *lexer.PeekingLexer) error {
 	if err := n.parse(lex); err != nil {
 		return err
 	}
@@ -142,16 +189,16 @@ func (n *Namespaces) Parse(lex *lexer.PeekingLexer) error {
 	return nil
 }
 
-func (n *Namespaces) parse(lex *lexer.PeekingLexer) error {
+func (n *namespaces) parse(lex *lexer.PeekingLexer) error {
 	advance := consume(lex, `XX`, `RS`)
 
 	for advance() {
-		ns := new(Namespace)
+		ns := new(namespace)
 		if err := ns.Parse(lex); err != nil {
 			return err
 		}
 
-		n.List = append(n.List, ns)
+		n.list = append(n.list, ns)
 	}
 
 	return nil

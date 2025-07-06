@@ -9,27 +9,32 @@ import (
 	"github.com/ardnew/envmux/pkg"
 )
 
-// Parameter represents a parameter node in the AST.
+// Parameter is a container for the semantic information of a Parameter node.
 type Parameter struct {
+	Value any
+}
+
+// parameter represents a parameter node in the AST.
+type parameter struct {
 	Pos    lexer.Position // Pos records the start position of the node.
 	EndPos lexer.Position // EndPos records the end position of the node.
 	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
 
-	ID string
+	Parameter
 }
 
-func (p *Parameter) String() string {
+func (p *parameter) String() string {
 	if p == nil {
 		return ""
 	}
 
-	return p.ID
+	return fmt.Sprint(p.Value)
 }
 
-func (p *Parameter) Parse(lex *lexer.PeekingLexer) error {
+func (p *parameter) Parse(lex *lexer.PeekingLexer) error {
 	if err := p.parse(lex); err != nil {
-		if p.ID != "" {
-			return fmt.Errorf("%w %q: %w", pkg.ErrInvalidParameter, p.ID, err)
+		if p.Value != "" {
+			return fmt.Errorf("%w %q: %w", pkg.ErrInvalidParameter, p.Value, err)
 		}
 
 		return err
@@ -38,7 +43,7 @@ func (p *Parameter) Parse(lex *lexer.PeekingLexer) error {
 	return nil
 }
 
-func (p *Parameter) parse(lex *lexer.PeekingLexer) error {
+func (p *parameter) parse(lex *lexer.PeekingLexer) error {
 	switch tok := lex.Next(); tok.Type { //nolint:exhaustive
 	case symbol()(`QQ`), symbol()(`NU`), symbol()(`ID`):
 		*p = makeParameter(tok)
@@ -53,47 +58,73 @@ func (p *Parameter) parse(lex *lexer.PeekingLexer) error {
 	}
 }
 
-func makeParameter(tok *lexer.Token) Parameter {
+func makeParameter(tok *lexer.Token) parameter {
 	if tok == nil || tok.EOF() {
-		return Parameter{} //nolint:exhaustruct
+		return parameter{} //nolint:exhaustruct
 	}
 
 	endPos := tok.Pos
 	endPos.Advance(tok.Value)
 
-	return Parameter{
-		ID:     tok.Value,
+	return parameter{
 		Pos:    tok.Pos,
 		EndPos: endPos,
 		Tokens: []lexer.Token{*tok},
+		Parameter: Parameter{
+			Value: tok.Value,
+		},
 	}
 }
 
-// Parameters represents a sequence of Parameter nodes in the AST.
-type Parameters struct {
+// parameters represents a sequence of Parameter nodes in the AST.
+type parameters struct {
 	Pos    lexer.Position // Pos records the start position of the node.
 	EndPos lexer.Position // EndPos records the end position of the node.
 	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
 
-	List []*Parameter
+	list []*parameter
+}
+
+// Len returns the number of parameters in the sequence.
+func (p *parameters) Len() int {
+	if p == nil {
+		return 0
+	}
+
+	return len(p.list)
 }
 
 // Seq returns the receiver's sequence of parameters.
-func (p *Parameters) Seq() iter.Seq[string] {
+func (p *parameters) Seq() iter.Seq[Parameter] {
 	if p == nil {
 		return nil
 	}
 
-	return func(yield func(string) bool) {
-		for _, v := range p.List {
-			if !yield(v.ID) {
+	return func(yield func(Parameter) bool) {
+		for _, v := range p.list {
+			if !yield(v.Parameter) {
 				return
 			}
 		}
 	}
 }
 
-func (p *Parameters) Parse(lex *lexer.PeekingLexer) error {
+// Values returns the receiver's sequence of parameter values.
+func (p *parameters) Values() iter.Seq[any] {
+	if p == nil {
+		return nil
+	}
+
+	return func(yield func(any) bool) {
+		for _, v := range p.list {
+			if !yield(v.Value) {
+				return
+			}
+		}
+	}
+}
+
+func (p *parameters) Parse(lex *lexer.PeekingLexer) error {
 	if err := p.parse(lex); err != nil {
 		return err
 	}
@@ -101,7 +132,7 @@ func (p *Parameters) Parse(lex *lexer.PeekingLexer) error {
 	return nil
 }
 
-func (p *Parameters) parse(lex *lexer.PeekingLexer) error {
+func (p *parameters) parse(lex *lexer.PeekingLexer) error {
 	if tok := lex.Next(); tok.Type != symbol()(`PO`) {
 		return &pkg.UnexpectedTokenError{
 			Tok: tok,
@@ -118,12 +149,12 @@ func (p *Parameters) parse(lex *lexer.PeekingLexer) error {
 			return nil
 		}
 
-		par := new(Parameter)
+		par := new(parameter)
 		if err := par.Parse(lex); err != nil {
 			return err
 		}
 
-		p.List = append(p.List, par)
+		p.list = append(p.list, par)
 	}
 
 	return &pkg.UnexpectedTokenError{

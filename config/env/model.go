@@ -10,7 +10,6 @@ import (
 	"maps"
 	"runtime"
 	"slices"
-	"strconv"
 
 	"github.com/carlmjohnson/flowmatic"
 	"github.com/expr-lang/expr"
@@ -92,23 +91,28 @@ func (m Model) IsZero() bool { return m.AST == nil }
 
 func (m Model) Eval(
 	ctx context.Context, namespaces ...string,
-) (vars.Env[string], error) {
+) (vars.Env[any], error) {
 	s := slices.Collect(pkg.Filter(slices.Values(namespaces),
 		func(ns string) bool { return ns != "" },
 	))
 
-	env, err := m.eval(ctx, s...)
+	list := make([]parse.Composite, len(s))
+	for i, id := range s {
+		list[i] = parse.Composite{ID: id}
+	}
+
+	env, err := m.eval(ctx, list...)
 
 	return env.eval, err
 }
 
 type parameterEnv struct {
-	eval vars.Env[string]
-	pars []string
+	eval vars.Env[any]
+	pars []any
 }
 
 func (m Model) eval(
-	ctx context.Context, namespaces ...string,
+	ctx context.Context, namespaces ...parse.Composite,
 ) (parameterEnv, error) {
 	if len(namespaces) == 0 {
 		return parameterEnv{}, nil //nolint:exhaustruct
@@ -122,8 +126,8 @@ func (m Model) eval(
 	maxJobs = min(m.MaxParallelJobs, maxJobs)
 
 	env := parameterEnv{
-		eval: vars.Env[string]{},
-		pars: []string{},
+		eval: vars.Env[any]{},
+		pars: []any{},
 	}
 
 	// If we have only one job, run the evaluations serially in this goroutine
@@ -170,27 +174,26 @@ func export(sub ...parameterEnv) pkg.Option[parameterEnv] {
 
 func (m Model) evalNamespace(
 	ctx context.Context,
-	namespace string,
+	namespace parse.Composite,
 ) (parameterEnv, error) {
-	match := func(filtered *parse.Namespace) bool {
-		return isDefined(filtered) && filtered.ID == namespace
+	match := func(filtered parse.Namespace) bool {
+		return filtered.ID == namespace.ID
 	}
 
 	// This loop will iterate at maximum one time,
 	// even if multiple namespaces with the given name exist.
 	// The first namespace found will be used to evaluate the environment.
-	// If the given namespace is not found, it will return an error.
-	for space := range pkg.Filter(slices.Values(m.Defs.List), match) {
+	for space := range pkg.Filter(m.Defs.Seq(), match) {
 		// If the namespace is composed of other namespaces,
 		// first add their evaluated environments to the current scope,
 		// then add their mappings to the current environment.
 		// This enables evaluation of nested namespaces with ancestor parameters.
 		env := parameterEnv{
-			eval: vars.Env[string]{},
-			pars: []string{},
+			eval: vars.Env[any]{},
+			pars: []any{},
 		}
 
-		if len(space.Com.List) > 0 {
+		if space.Com.Len() > 0 {
 			var err error
 
 			env, err = m.eval(ctx, slices.Collect(space.Com.Seq())...)
@@ -200,10 +203,11 @@ func (m Model) evalNamespace(
 		}
 
 		// Collect the parameters from the namespace and the environment.
-		pars := slices.Concat(slices.Collect(space.Par.Seq()), env.pars)
+		pars := slices.Concat(slices.Collect(space.Par.Values()), env.pars,
+			slices.Collect(namespace.Params.Values()))
 
 		// Evaluate mappings
-		for _, dict := range space.Sta.List {
+		for dict := range space.Sta.Seq() {
 			v, err := m.evalMapping(ctx, space, dict, env.eval, pars)
 			if err != nil {
 				return parameterEnv{}, err
@@ -239,14 +243,14 @@ func collect(e vars.Env[any]) vars.Env[any] {
 // evalMapping evaluates a single mapping across all applicable parameters.
 func (m Model) evalMapping(
 	ctx context.Context,
-	space *parse.Namespace,
-	dict *parse.Statement,
-	eval vars.Env[string],
-	pars []string,
-) (vars.Env[string], error) {
+	space parse.Namespace,
+	dict parse.Statement,
+	eval vars.Env[any],
+	pars []any,
+) (vars.Env[any], error) {
 	env := pkg.Make(vars.WithContext(ctx), vars.WithExports(eval))
 
-	env[vars.ParameterKey] = "" // placeholder for compiler
+	env[vars.ParameterKey] = any(nil) // placeholder for compiler
 
 	// We have to pass the environment to both [expr.Compile] and [expr.Run].
 	// The former builds type information for validating the latter.
@@ -260,26 +264,22 @@ func (m Model) evalMapping(
 	program, err := expr.Compile(dict.Ex.Src, opt...)
 	if err != nil {
 		return nil, &pkg.ExpressionError{
-			NS: space.ID, Var: dict.Ev, Err: err,
+			NS: space.ID, Var: dict.ID, Err: err,
 		}
 	}
 
 	// Handle case with no parameters
 	if len(pars) == 0 {
-		pars = []string{""}
+		pars = []any{nil}
 
 		delete(env, vars.ParameterKey)
 	}
 
 	// Process each parameter
 	for _, par := range pars {
-		if par != "" {
-			str := par
-			if val, err := strconv.Unquote(str); err == nil {
-				str = val
-			}
-
-			env[vars.ParameterKey] = str
+		if par != nil {
+			// If the parameter is a string, unquote it to make a literal value.
+			env[vars.ParameterKey] = pkg.Unquote(par)
 		}
 
 		res, err := expr.Run(program, env.AsMap())
@@ -287,15 +287,8 @@ func (m Model) evalMapping(
 			return nil, err
 		}
 
-		str := fmt.Sprint(res)
-		if val, err := strconv.Unquote(str); err == nil {
-			str = val
-		}
-
-		env[dict.Ev] = str
+		env[dict.ID] = pkg.Unquote(res)
 	}
 
-	return collect(env).Export(), nil
+	return collect(env), nil
 }
-
-func isDefined(ns *parse.Namespace) bool { return ns != nil }

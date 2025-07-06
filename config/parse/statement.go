@@ -10,7 +10,14 @@ import (
 	"github.com/ardnew/envmux/pkg"
 )
 
-// Statement represents a statement node in the AST.
+// Statement is a container for the semantic information of a Statement node.
+type Statement struct {
+	ID string
+	Op string
+	Ex *expression
+}
+
+// statement represents a statement node in the AST.
 //
 // It assigns or amends value to a variable identifier in a namespace.
 // The value can be a literal or an evaluated expression.
@@ -21,33 +28,26 @@ import (
 //
 // Each parameter's evaluation is assigned to the variable based on the formal
 // syntax used by the parameter.
-type Statement struct {
+type statement struct {
 	Pos    lexer.Position // Pos records the start position of the node.
 	EndPos lexer.Position // EndPos records the end position of the node.
 	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
 
-	Ev string
-	Op string
-	Ex *Expression
+	Statement
 }
 
-func (s *Statement) String() string {
+func (s *statement) String() string {
 	if s == nil {
 		return ""
 	}
 
-	str := []string{s.Ev}
-	if s.Op != "" && s.Ex != nil {
-		str = append(str, s.Op, s.Ex.String())
-	}
-
-	return vars.Export(str...)
+	return vars.Export(s.ID, s.Ex)
 }
 
-func (s *Statement) Parse(lex *lexer.PeekingLexer) error {
+func (s *statement) Parse(lex *lexer.PeekingLexer) error {
 	if err := s.parse(lex); err != nil {
-		if s.Ev != "" {
-			return fmt.Errorf("%w %q: %w", pkg.ErrInvalidStatement, s.Ev, err)
+		if s.ID != "" {
+			return fmt.Errorf("%w %q: %w", pkg.ErrInvalidStatement, s.ID, err)
 		}
 
 		return err
@@ -56,7 +56,7 @@ func (s *Statement) Parse(lex *lexer.PeekingLexer) error {
 	return nil
 }
 
-func (s *Statement) parse(lex *lexer.PeekingLexer) error {
+func (s *statement) parse(lex *lexer.PeekingLexer) error {
 	advance := consume(lex, `XX`)
 
 	tid := lex.Next()
@@ -67,7 +67,7 @@ func (s *Statement) parse(lex *lexer.PeekingLexer) error {
 		}
 	}
 
-	s.Ev = tid.Value
+	s.ID = tid.Value
 	s.Tokens = append(s.Tokens, *tid)
 
 	advance()
@@ -85,7 +85,7 @@ func (s *Statement) parse(lex *lexer.PeekingLexer) error {
 
 	advance()
 
-	s.Ex = new(Expression)
+	s.Ex = new(expression)
 	if err := s.Ex.Parse(lex); err != nil {
 		return err
 	}
@@ -97,31 +97,40 @@ func (s *Statement) parse(lex *lexer.PeekingLexer) error {
 	return nil
 }
 
-// Statements represents a sequence of Statement nodes in the AST.
-type Statements struct {
+// statements represents a sequence of Statement nodes in the AST.
+type statements struct {
 	Pos    lexer.Position // Pos records the start position of the node.
 	EndPos lexer.Position // EndPos records the end position of the node.
 	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
 
-	List []*Statement
+	list []*statement
+}
+
+// Len returns the number of statements in the sequence.
+func (s *statements) Len() int {
+	if s == nil {
+		return 0
+	}
+
+	return len(s.list)
 }
 
 // Seq returns the receiver's sequence of statements.
-func (s *Statements) Seq() iter.Seq[string] {
+func (s *statements) Seq() iter.Seq[Statement] {
 	if s == nil {
 		return nil
 	}
 
-	return func(yield func(string) bool) {
-		for _, v := range s.List {
-			if !yield(v.Ev) {
+	return func(yield func(Statement) bool) {
+		for _, v := range s.list {
+			if !yield(v.Statement) {
 				return
 			}
 		}
 	}
 }
 
-func (s *Statements) Parse(lex *lexer.PeekingLexer) error {
+func (s *statements) Parse(lex *lexer.PeekingLexer) error {
 	if err := s.parse(lex); err != nil {
 		return err
 	}
@@ -129,7 +138,7 @@ func (s *Statements) Parse(lex *lexer.PeekingLexer) error {
 	return nil
 }
 
-func (s *Statements) parse(lex *lexer.PeekingLexer) error {
+func (s *statements) parse(lex *lexer.PeekingLexer) error {
 	if tok := lex.Next(); tok.Type != symbol()(`SO`) {
 		return &pkg.UnexpectedTokenError{
 			Tok: tok,
@@ -146,12 +155,12 @@ func (s *Statements) parse(lex *lexer.PeekingLexer) error {
 			return nil
 		}
 
-		sta := new(Statement)
+		sta := new(statement)
 		if err := sta.Parse(lex); err != nil {
 			return err
 		}
 
-		s.List = append(s.List, sta)
+		s.list = append(s.list, sta)
 	}
 
 	return &pkg.UnexpectedTokenError{
