@@ -11,7 +11,7 @@ require (
 	golang.org/x/text v0.26.0
 )
 
-require github.com/ardnew/mung v0.2.0
+require github.com/ardnew/mung v0.3.0
 
 require (
 	github.com/carlmjohnson/deque v0.23.1 // indirect
@@ -21,5 +21,3 @@ require (
 )
 
 replace github.com/peterbourgon/ff/v4 => github.com/ardnew/ff/v4 v4.0.0-alpha.4.0.20250620043230-85a893511772
-
-replace github.com/ardnew/mung => /opt/mung/src

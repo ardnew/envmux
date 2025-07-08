@@ -6,8 +6,8 @@ github.com/alecthomas/repr v0.4.0 h1:GhI2A8MACjfegCPVq9f1FLvIBS+DrQ2KQBFZP1iFzXc
 github.com/alecthomas/repr v0.4.0/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
 github.com/ardnew/ff/v4 v4.0.0-alpha.4.0.20250620043230-85a893511772 h1:MxpOJuTsrsisyd3mZN60rdn0+RcwvDxgOdQ2YiXUFqA=
 github.com/ardnew/ff/v4 v4.0.0-alpha.4.0.20250620043230-85a893511772/go.mod h1:H/13DK46DKXy7EaIxPhk2Y0EC8aubKm35nBjBe8AAGc=
-github.com/ardnew/mung v0.2.0 h1:T6sah2SqWOpz6b4Hi9xNOS/ijKIwCtAw7YH/oij10iw=
-github.com/ardnew/mung v0.2.0/go.mod h1:WmQmrUeqO8z4MVY6hUrDkHV6VRLcJXNujt6pshLstZ0=
+github.com/ardnew/mung v0.3.0 h1:5qCZSr+u8mDD47VnZuHFfZk8h/15qo9qYbi4t9GAfmg=
+github.com/ardnew/mung v0.3.0/go.mod h1:WmQmrUeqO8z4MVY6hUrDkHV6VRLcJXNujt6pshLstZ0=
 github.com/carlmjohnson/deque v0.23.1 h1:X2HOJM9xcglY03deMZ0oZ1V2xtbqYV7dJDnZiSZN4Ak=
 github.com/carlmjohnson/deque v0.23.1/go.mod h1:LF5NJjICBrEOPx84pxPL4nCimy5n9NQjxKi5cXkh+8U=
 github.com/carlmjohnson/flowmatic v0.23.4 h1:SfK6f+zKUlw4aga1ph+7/csqVeUAWnBxfqKN5gvQzzs=
