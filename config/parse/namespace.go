@@ -1,205 +1,236 @@
 package parse
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"iter"
+	"strings"
 
-	"github.com/alecthomas/participle/v2/lexer"
-
+	"github.com/ardnew/envmux/config/parse/stream"
 	"github.com/ardnew/envmux/pkg"
 )
 
-// Namespace is a container for the semantic information of a Namespace node.
-type Namespace struct {
-	ID string
+const StringerAlwaysShowsMeta = true
 
-	Com composites
-	Par parameters
-	Sta statements
-}
-
-// namespace associates a composition of environment variable definitions with
-// a namespace identifier.
+// Namespace associates a composition of environment variable definitions with
+// a Namespace identifier.
 //
 // Variable definitions are expressed entirely with the [expr-lang] grammar.
 //
 // [expr-lang]: https://github.com/expr-lang/expr
-type namespace struct {
-	Pos    lexer.Position // Pos records the start position of the node.
-	EndPos lexer.Position // EndPos records the end position of the node.
-	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
+type Namespace struct {
+	Ident string
 
-	Namespace
+	Composites []Composite
+	Parameters []Parameter
+	Statements []Statement
 }
 
-func (n *namespace) Composites() iter.Seq[Composite] {
-	if n == nil {
-		return nil
+func (n Namespace) String() string {
+	if n.Ident == "" {
+		return ""
 	}
 
-	return n.Com.Seq()
+	var com, par, sta string
+
+	if len(n.Composites) > 0 {
+		coms := make([]string, len(n.Composites))
+		for i, c := range n.Composites {
+			coms[i] = c.String()
+		}
+
+		com = strings.Join(coms, FS)
+		if !StringerAlwaysShowsMeta {
+			com = fmt.Sprintf("%s%s%s", co, com, cc)
+		}
+	}
+
+	if len(n.Parameters) > 0 {
+		pars := make([]string, len(n.Parameters))
+		for i, p := range n.Parameters {
+			pars[i] = p.String()
+		}
+
+		par = strings.Join(pars, FS)
+		if !StringerAlwaysShowsMeta {
+			par = fmt.Sprintf("%s%s%s", po, par, pc)
+		}
+	}
+
+	if len(n.Statements) > 0 {
+		stas := make([]string, len(n.Statements))
+		for i, s := range n.Statements {
+			stas[i] = s.String()
+		}
+
+		sta = strings.Join(stas, RS)
+		if !StringerAlwaysShowsMeta {
+			sta = fmt.Sprintf("%s%s%s", so, sta, sc)
+		}
+	}
+
+	if StringerAlwaysShowsMeta {
+		com = fmt.Sprintf("%s%s%s", co, com, cc)
+		par = fmt.Sprintf("%s%s%s", po, par, pc)
+		sta = fmt.Sprintf("%s%s%s", so, sta, sc)
+	}
+
+	return fmt.Sprintf("%s%s%s%s", n.Ident, com, par, sta)
 }
 
-func (n *namespace) Parameters() iter.Seq[Parameter] {
-	if n == nil {
-		return nil
-	}
-
-	return nil
-}
-
-// Parse parses an expression using the provided lexer
-// and stores the unevaluated source code in the Expr's Src field.
-// Returns an error if parsing fails.
-func (n *namespace) Parse(lex *lexer.PeekingLexer) error {
-	err := n.parse(lex)
-	if err != nil {
-		return &pkg.NamespaceError{ID: n.ID, Err: err}
-	}
-
-	return nil
-}
-
-func (n *namespace) parse(lex *lexer.PeekingLexer) error {
-	advance := consume(lex, `XX`)
-
-	tok := lex.Next()
-	if tok.Type != symbol()(`NS`) {
-		return &pkg.UnexpectedTokenError{
-			Tok: tok,
-			Msg: []string{`expected namespace identifier`},
-		}
-	}
-
-	n.ID = tok.Value
-
-	if !advance() {
-		return nil
-	}
-
-	if lex.Peek().Type == symbol()(`CO`) {
-		if err := n.Com.Parse(lex); err != nil {
-			return err
-		}
-
-		if !advance() {
-			return nil
-		}
-	}
-
-	if !advance() {
-		return nil
-	}
-
-	if lex.Peek().Type == symbol()(`PO`) {
-		if err := n.Par.Parse(lex); err != nil {
-			return err
-		}
-
-		if !advance() {
-			return nil
-		}
-
-		if peek := lex.Peek(); peek.Type == symbol()(`CO`) {
-			return &pkg.UnexpectedTokenError{
-				Tok: peek,
-				Msg: []string{
-					`composites "` + co + `…` + cc + `" must be declared before ` +
-						`parameters "` + po + `…` + pc + `"`,
-				},
-			}
-		}
-	}
-
-	if !advance() {
-		return nil
-	}
-
-	if lex.Peek().Type == symbol()(`SO`) {
-		if err := n.Sta.Parse(lex); err != nil {
-			return err
-		}
-
-		if !advance() {
-			return nil
-		}
-
-		//nolint:exhaustive
-		switch peek := lex.Peek(); peek.Type {
-		case symbol()(`PO`):
-			return &pkg.UnexpectedTokenError{
-				Tok: peek,
-				Msg: []string{
-					`parameters "` + po + `…` + pc + `" must be declared before ` +
-						`statements "` + so + `…` + sc + `"`,
-				},
-			}
-
-		case symbol()(`CO`):
-			return &pkg.UnexpectedTokenError{
-				Tok: peek,
-				Msg: []string{
-					`composites "` + co + `…` + cc + `" must be declared before ` +
-						`statements "` + so + `…` + sc + `"`,
-				},
-			}
-		}
-	}
-
-	return nil
-}
-
-// namespaces represents a sequence of Namespace nodes in the AST.
-type namespaces struct {
-	Pos    lexer.Position // Pos records the start position of the node.
-	EndPos lexer.Position // EndPos records the end position of the node.
-	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
-
-	list []*namespace
-}
-
-// Len returns the number of namespaces in the sequence.
-func (n *namespaces) Len() int {
-	if n == nil {
-		return 0
-	}
-
-	return len(n.list)
-}
-
-// Seq returns the receiver's sequence of namespaces.
-func (n *namespaces) Seq() iter.Seq[Namespace] {
-	if n == nil {
-		return nil
-	}
-
-	return func(yield func(Namespace) bool) {
-		for _, v := range n.list {
-			if !yield(v.Namespace) {
+// Arguments returns a [Parameter.Value] sequence of all [Namespace.Parameter]s.
+func (n Namespace) Arguments() iter.Seq[any] {
+	return func(yield func(any) bool) {
+		for _, p := range n.Parameters {
+			if !yield(p.Value) {
 				return
 			}
 		}
 	}
 }
 
-func (n *namespaces) Parse(lex *lexer.PeekingLexer) error {
-	if err := n.parse(lex); err != nil {
-		return err
-	}
+// func (n Namespace) Composites() iter.Seq[Composite] { return n.Com.Seq() }
+// func (n Namespace) Parameters() iter.Seq[Parameter] { return n.Par.Seq() }
+// func (n Namespace) Statements() iter.Seq[Statement] { return n.Sta.Seq() }
 
-	return nil
-}
+func namespaces(
+	ctx context.Context,
+	sg *stream.Group[stream.Token],
+) stream.Group[Namespace] {
+	var getType stream.TypeResolver = tokenType()
 
-func (n *namespaces) parse(lex *lexer.PeekingLexer) error {
-	advance := consume(lex, `XX`, `RS`)
+	var stage stream.Stage[Namespace] = func() (Namespace, error) {
+		tok, err := sg.Accept(getType.Predicate(`NS`))
 
-	for advance() {
-		ns := new(namespace)
-		if err := ns.Parse(lex); err != nil {
-			return err
+		switch {
+		case errors.Is(err, pkg.ErrClosedStream):
+			return Namespace{}, pkg.ErrEOF
+		case errors.Is(err, pkg.ErrUnacceptableStream):
+			return Namespace{}, pkg.UnexpectedTokenError{
+				Tok: tok.Lexeme(),
+				Msg: []string{`expected namespace identifier`},
+			}
 		}
 
-		n.list = append(n.list, ns)
+		ns := Namespace{Ident: tok.Value} //nolint:exhaustruct
+
+		for c := range composites(ctx, sg).Channel {
+			ns.Composites = append(ns.Composites, c)
+		}
+
+		for p := range parameters(ctx, sg).Channel {
+			ns.Parameters = append(ns.Parameters, p)
+		}
+
+		for s := range statements(ctx, ns.Ident, sg).Channel {
+			ns.Statements = append(ns.Statements, s)
+		}
+
+		return ns, nil
 	}
 
-	return nil
+	return pkg.Make(stage.Pipe(ctx))
 }
+
+// tok, ok := <-sg.Chan
+// if !ok {
+// 	return namespace{}, pkg.ErrEOF
+// }
+
+// switch tok.Type {
+// case getType(`NS`):
+// 	ns := namespace{id: tok.Value}
+// 	return ns, nil
+
+// default:
+// 	return namespace{}, nil
+// }
+
+// 	advance := consume(lex, `XX`)
+
+// 	tok := lex.Next()
+// 	if tok.Type != symbol()(`NS`) {
+// 		return pkg.UnexpectedTokenError{
+// 			Tok: tok,
+// 			Msg: []string{`expected namespace identifier`},
+// 		}
+// 	}
+
+// 	n.ID = tok.Value
+
+// 	if !advance() {
+// 		return nil
+// 	}
+
+// 	if lex.Peek().Type == symbol()(`CO`) {
+// 		if err := n.Com.Parse(lex); err != nil {
+// 			return err
+// 		}
+
+// 		if !advance() {
+// 			return nil
+// 		}
+// 	}
+
+// 	if !advance() {
+// 		return nil
+// 	}
+
+// 	if lex.Peek().Type == symbol()(`PO`) {
+// 		if err := n.Par.Parse(lex); err != nil {
+// 			return err
+// 		}
+
+// 		if !advance() {
+// 			return nil
+// 		}
+
+// 		if peek := lex.Peek(); peek.Type == symbol()(`CO`) {
+// 			return pkg.UnexpectedTokenError{
+// 				Tok: peek,
+// 				Msg: []string{
+// 					`composites "` + co + `…` + cc + `" must be declared before ` +
+// 						`parameters "` + po + `…` + pc + `"`,
+// 				},
+// 			}
+// 		}
+// 	}
+
+// 	if !advance() {
+// 		return nil
+// 	}
+
+// 	if lex.Peek().Type == symbol()(`SO`) {
+// 		if err := n.Sta.Parse(lex); err != nil {
+// 			return err
+// 		}
+
+// 		if !advance() {
+// 			return nil
+// 		}
+
+// 		//nolint:exhaustive
+// 		switch peek := lex.Peek(); peek.Type {
+// 		case symbol()(`PO`):
+// 			return pkg.UnexpectedTokenError{
+// 				Tok: peek,
+// 				Msg: []string{
+// 					`parameters "` + po + `…` + pc + `" must be declared before ` +
+// 						`statements "` + so + `…` + sc + `"`,
+// 				},
+// 			}
+
+// 		case symbol()(`CO`):
+// 			return pkg.UnexpectedTokenError{
+// 				Tok: peek,
+// 				Msg: []string{
+// 					`composites "` + co + `…` + cc + `" must be declared before ` +
+// 						`statements "` + so + `…` + sc + `"`,
+// 				},
+// 			}
+// 		}
+// 	}
+
+// 	return nil
+// }

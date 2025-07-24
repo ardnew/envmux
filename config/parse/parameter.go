@@ -1,164 +1,101 @@
 package parse
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"iter"
 
-	"github.com/alecthomas/participle/v2/lexer"
-
+	"github.com/ardnew/envmux/config/parse/stream"
 	"github.com/ardnew/envmux/pkg"
 )
 
-// Parameter is a container for the semantic information of a Parameter node.
+// Parameter represents a value that can be referenced
+// using the implicit variable named by
+// [github.com/ardnew/envmux/config/env/vars.ParameterKey]
+// in each [statement.expression] of a [namespace].
 type Parameter struct {
 	Value any
 }
 
-// parameter represents a parameter node in the AST.
-type parameter struct {
-	Pos    lexer.Position // Pos records the start position of the node.
-	EndPos lexer.Position // EndPos records the end position of the node.
-	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
-
-	Parameter
-}
-
-func (p *parameter) String() string {
-	if p == nil {
+func (p Parameter) String() string {
+	if p.Value == nil {
 		return ""
 	}
 
-	return fmt.Sprint(p.Value)
+	return fmt.Sprintf("%v", p.Value)
 }
 
-func (p *parameter) Parse(lex *lexer.PeekingLexer) error {
-	if err := p.parse(lex); err != nil {
-		if p.Value != "" {
-			return fmt.Errorf("%w %q: %w", pkg.ErrInvalidParameter, p.Value, err)
-		}
+func parameters(
+	ctx context.Context,
+	sg *stream.Group[stream.Token],
+) stream.Group[Parameter] {
+	var getType stream.TypeResolver = tokenType()
 
-		return err
-	}
+	count := 0 // number of parameters parsed by the stage
 
-	return nil
-}
+	var stage stream.Stage[Parameter] = func() (Parameter, error) {
+		var sym, msg string
 
-func (p *parameter) parse(lex *lexer.PeekingLexer) error {
-	switch tok := lex.Next(); tok.Type { //nolint:exhaustive
-	case symbol()(`QQ`), symbol()(`NU`), symbol()(`ID`):
-		*p = makeParameter(tok)
+		// There are two possible starting states for the stage:
+		//  1. No parameters have been parsed yet, so the first token must
+		//     be the parameter list opening meta-token.
+		//  2. At least one parameter has been parsed, so the first token
+		//     must be the parameter list delimiter or closing meta-token.
+		if count == 0 {
+			sym = `PO` // parameter list open meta-token
+			msg = fmt.Sprintf(`expected parameter list opening meta-token %q`, po)
+		} else {
+			sym = `FS` // parameter list delimiter meta-token (field separator)
+			msg = fmt.Sprintf(`expected parameter list delimiter meta-token %q`, FS)
 
-		return nil
-
-	default:
-		return &pkg.UnexpectedTokenError{
-			Tok: tok,
-			Msg: []string{`expected string, number, or identifier as parameter`},
-		}
-	}
-}
-
-func makeParameter(tok *lexer.Token) parameter {
-	if tok == nil || tok.EOF() {
-		return parameter{} //nolint:exhaustruct
-	}
-
-	endPos := tok.Pos
-	endPos.Advance(tok.Value)
-
-	return parameter{
-		Pos:    tok.Pos,
-		EndPos: endPos,
-		Tokens: []lexer.Token{*tok},
-		Parameter: Parameter{
-			Value: tok.Value,
-		},
-	}
-}
-
-// parameters represents a sequence of Parameter nodes in the AST.
-type parameters struct {
-	Pos    lexer.Position // Pos records the start position of the node.
-	EndPos lexer.Position // EndPos records the end position of the node.
-	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
-
-	list []*parameter
-}
-
-// Len returns the number of parameters in the sequence.
-func (p *parameters) Len() int {
-	if p == nil {
-		return 0
-	}
-
-	return len(p.list)
-}
-
-// Seq returns the receiver's sequence of parameters.
-func (p *parameters) Seq() iter.Seq[Parameter] {
-	if p == nil {
-		return nil
-	}
-
-	return func(yield func(Parameter) bool) {
-		for _, v := range p.list {
-			if !yield(v.Parameter) {
-				return
+			// Check for the parameter close meta-token
+			// after processing each parameter,
+			// and before the parameter list delimiter meta-token.
+			if _, err := sg.Accept(getType.Predicate(`PC`)); err == nil {
+				return Parameter{}, pkg.ErrEOF
 			}
 		}
-	}
-}
 
-// Values returns the receiver's sequence of parameter values.
-func (p *parameters) Values() iter.Seq[any] {
-	if p == nil {
-		return nil
-	}
+		tok, err := sg.Accept(getType.Predicate(sym))
 
-	return func(yield func(any) bool) {
-		for _, v := range p.list {
-			if !yield(v.Value) {
-				return
+		switch {
+		case errors.Is(err, pkg.ErrClosedStream):
+			if count > 0 {
+				return Parameter{}, pkg.ErrUnexpectedEOF
+			}
+
+			return Parameter{}, pkg.ErrEOF
+		case errors.Is(err, pkg.ErrUnacceptableStream):
+			return Parameter{}, pkg.UnexpectedTokenError{
+				Tok: tok.Lexeme(), Msg: []string{msg},
 			}
 		}
-	}
-}
 
-func (p *parameters) Parse(lex *lexer.PeekingLexer) error {
-	if err := p.parse(lex); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (p *parameters) parse(lex *lexer.PeekingLexer) error {
-	if tok := lex.Next(); tok.Type != symbol()(`PO`) {
-		return &pkg.UnexpectedTokenError{
-			Tok: tok,
-			Msg: []string{`expected open-parenthesis '(' to begin parameters`},
-		}
-	}
-
-	advance := consume(lex, `XX`, `FS`)
-
-	for advance() {
-		if tok := lex.Peek(); tok.Type == symbol()(`PC`) {
-			_ = lex.Next() // Consume the closing parenthesis.
-
-			return nil
+		// Check for the parameter list close meta-token immediately
+		// after the opening or delimiting meta-token.
+		if _, err := sg.Accept(getType.Predicate(`PC`)); err == nil {
+			return Parameter{}, pkg.ErrEOF
 		}
 
-		par := new(parameter)
-		if err := par.Parse(lex); err != nil {
-			return err
+		// After either opening or delimiting the parameter list,
+		// the next token must be a parameter value.
+		tok, err = sg.AcceptAny(getType.Predicates(`ID`, `QQ`, `NU`)...)
+
+		switch {
+		case errors.Is(err, pkg.ErrClosedStream):
+			return Parameter{}, pkg.ErrUnexpectedEOF
+		case errors.Is(err, pkg.ErrUnacceptableStream):
+			return Parameter{}, pkg.UnexpectedTokenError{
+				Tok: tok.Lexeme(),
+				Msg: []string{`expected parameter value`},
+			}
 		}
 
-		p.list = append(p.list, par)
+		count++
+		pv := Parameter{Value: tok.Value}
+
+		return pv, nil
 	}
 
-	return &pkg.UnexpectedTokenError{
-		Tok: lex.Peek(),
-		Msg: []string{`expected close-parenthesis ')' to end parameters`},
-	}
+	return pkg.Make(stage.Pipe(ctx))
 }

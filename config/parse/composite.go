@@ -1,171 +1,138 @@
 package parse
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"iter"
+	"strings"
 
-	"github.com/alecthomas/participle/v2/lexer"
-
+	"github.com/ardnew/envmux/config/parse/stream"
 	"github.com/ardnew/envmux/pkg"
 )
 
-// Composite is a container for the semantic information of a Composite node.
+// Composite contains a namespace identifier whose evaluated environment can be
+// inherited in the definition of a [namespace].
+//
+// A Composite can optionally specify an in-line [parameter] list that is
+// appended to that [namespace]'s own parameter list definition.
 type Composite struct {
-	ID     string
-	Params parameters
+	Ident string
+
+	Parameters []Parameter
 }
 
-// composite represents a composition node in the AST.
-type composite struct {
-	Pos    lexer.Position // Pos records the start position of the node.
-	EndPos lexer.Position // EndPos records the end position of the node.
-	Tokens []lexer.Token  // Tokens records the tokens consumed by the node.
-
-	Composite
-}
-
-func (c *composite) String() string {
-	if c == nil {
+func (c Composite) String() string {
+	if c.Ident == "" {
 		return ""
 	}
 
-	return c.ID
-}
+	var par string
 
-func (c *composite) Parse(lex *lexer.PeekingLexer) error {
-	if err := c.parse(lex); err != nil {
-		if c.ID != "" {
-			return fmt.Errorf("%w %q: %w", pkg.ErrInvalidComposite, c.ID, err)
+	if len(c.Parameters) > 0 {
+		pars := make([]string, len(c.Parameters))
+		for i, p := range c.Parameters {
+			pars[i] = fmt.Sprintf(`%v`, p.Value)
 		}
 
-		return err
+		par = strings.Join(pars, FS)
 	}
 
-	return nil
+	return fmt.Sprintf(`%s%s%s%s`, c.Ident, po, par, pc)
 }
 
-func (c *composite) parse(lex *lexer.PeekingLexer) error {
-	switch tok := lex.Next(); tok.Type { //nolint:exhaustive
-	case symbol()(`NS`):
-		*c = makeComposite(tok)
-
-		ccp := lex.MakeCheckpoint()
-
-		// A composite can also have parameters which are evaluated in the context
-		// of the composed namespace.
-		if err := c.Params.Parse(lex); err != nil {
-			// If parsing parameters fails, reset the lexer to the checkpoint
-			// and finish parsing the composite.
-			lex.LoadCheckpoint(ccp)
-		}
-
-		return nil
-
-	default:
-		return &pkg.UnexpectedTokenError{
-			Tok: tok, Msg: []string{
-				`expected namespace identifier as composite`,
-			},
-		}
-	}
-}
-
-func makeComposite(tok *lexer.Token) composite {
-	if tok == nil || tok.EOF() {
-		return composite{} //nolint:exhaustruct
-	}
-
-	endPos := tok.Pos
-	endPos.Advance(tok.Value)
-
-	return composite{
-		Pos:    tok.Pos,
-		EndPos: endPos,
-		Tokens: []lexer.Token{*tok},
-		Composite: Composite{
-			ID:     tok.Value,
-			Params: parameters{}, //nolint:exhaustruct
-		},
-	}
-}
-
-// composites represents a sequence of Composite nodes in the AST.
-type composites struct {
-	Pos    lexer.Position // Pos records the start position of the node.
-	EndPos lexer.Position // EndPos records the end position of the node.
-	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
-
-	list []*composite
-}
-
-// Len returns the number of composites in the sequence.
-func (c *composites) Len() int {
-	if c == nil {
-		return 0
-	}
-
-	return len(c.list)
-}
-
-// Seq returns the receiver's unique sequence of composite identifiers paired
-// with any parameters declared with it in the composition.
+// Arguments returns a [Parameter.Value] sequence of all [Composite.Parameter]s.
 //
-// Only the first occurrence of duplicate identifiers is yielded.
-func (c *composites) Seq() iter.Seq[Composite] {
-	if c == nil {
-		return nil
-	}
-
-	unique := make(pkg.Unique[string])
-
-	return func(yield func(Composite) bool) {
-		for _, v := range c.list {
-			if unique.Set(v.ID) && !yield(v.Composite) {
+// These parameters are specified in-line in the [Composite] list of a
+// [Namespace] definition, which get appended to the composited
+// [Namespace.Parameters], but only for that evaluated instance.
+func (c Composite) Arguments() iter.Seq[any] {
+	return func(yield func(any) bool) {
+		for _, p := range c.Parameters {
+			if !yield(p.Value) {
 				return
 			}
 		}
 	}
 }
 
-func (c *composites) Parse(lex *lexer.PeekingLexer) error {
-	if err := c.parse(lex); err != nil {
-		return err
-	}
+func composites(
+	ctx context.Context,
+	sg *stream.Group[stream.Token],
+) stream.Group[Composite] {
+	var getType stream.TypeResolver = tokenType()
 
-	return nil
-}
+	count := 0 // number of composite namespace identifiers parsed by the stage
 
-func (c *composites) parse(lex *lexer.PeekingLexer) error {
-	if tok := lex.Next(); tok.Type != symbol()(`CO`) {
-		return &pkg.UnexpectedTokenError{
-			Tok: tok,
-			Msg: []string{
-				`expected open-angle-bracket '<' to begin composites`,
-			},
+	var stage stream.Stage[Composite] = func() (Composite, error) {
+		var sym, msg string
+
+		// There are two possible starting states for the stage:
+		//  1. No composites have been parsed yet, so the first token must be the
+		//     composite list opening meta-token.
+		//  2. At least one composite has been parsed, so the first token must be
+		//     the composite list delimiter or closing meta-token.
+		if count == 0 {
+			sym = `CO` // composite list open meta-token
+			msg = fmt.Sprintf(`expected composite list opening meta-token %q`, co)
+		} else {
+			sym = `FS` // composite list delimiter meta-token (field separator)
+			msg = fmt.Sprintf(`expected composite list delimiter meta-token %q`, FS)
+
+			// Check for the composite list close meta-token
+			// after processing each composite,
+			// but before the composite list delimiter meta-token.
+			if _, err := sg.Accept(getType.Predicate(`CC`)); err == nil {
+				return Composite{}, pkg.ErrEOF
+			}
 		}
-	}
 
-	advance := consume(lex, `XX`, `FS`)
+		tok, err := sg.Accept(getType.Predicate(sym))
 
-	for advance() {
-		if tok := lex.Peek(); tok.Type == symbol()(`CC`) {
-			_ = lex.Next() // Consume the closing angle bracket.
+		switch {
+		case errors.Is(err, pkg.ErrClosedStream):
+			if count > 0 {
+				return Composite{}, pkg.ErrUnexpectedEOF
+			}
 
-			return nil
+			return Composite{}, pkg.ErrEOF
+		case errors.Is(err, pkg.ErrUnacceptableStream):
+			return Composite{}, pkg.UnexpectedTokenError{
+				Tok: tok.Lexeme(), Msg: []string{msg},
+			}
 		}
 
-		com := new(composite)
-		if err := com.Parse(lex); err != nil {
-			return err
+		// Check for the composite list close meta-token immediately
+		// after the opening or delimiting meta-token.
+		if _, err := sg.Accept(getType.Predicate(`CC`)); err == nil {
+			return Composite{}, pkg.ErrEOF
 		}
 
-		c.list = append(c.list, com)
+		// After either opening or delimiting the composite list,
+		// the next token must be a composite namespace identifier.
+		tok, err = sg.AcceptAny(getType.Predicates(`NS`, `QQ`)...)
+
+		switch {
+		case errors.Is(err, pkg.ErrClosedStream):
+			return Composite{}, pkg.ErrUnexpectedEOF
+		case errors.Is(err, pkg.ErrUnacceptableStream):
+			return Composite{}, pkg.UnexpectedTokenError{
+				Tok: tok.Lexeme(),
+				Msg: []string{`expected composite namespace identifier`},
+			}
+		}
+
+		count++
+		co := Composite{Ident: tok.Value} //nolint:exhaustruct
+
+		// (optional) Capture all parameters specified in-line
+		// with the composite namespace identifier.
+		for p := range parameters(ctx, sg).Channel {
+			co.Parameters = append(co.Parameters, p)
+		}
+
+		return co, nil
 	}
 
-	return &pkg.UnexpectedTokenError{
-		Tok: lex.Peek(),
-		Msg: []string{
-			`expected close-angle-bracket '>' to end composites`,
-		},
-	}
+	return pkg.Make(stage.Pipe(ctx))
 }

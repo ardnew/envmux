@@ -5,7 +5,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
+
+const InputSourceDelimiter = utf8.RuneSelf
 
 //nolint:gochecknoglobals
 var (

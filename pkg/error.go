@@ -79,8 +79,18 @@ var (
 	// ErrIncompleteEval indicates that the evaluation is incomplete.
 	ErrIncompleteEval = Error{"incomplete evaluation"}
 
+	// ErrClosedStream indicates that the stream is closed.
+	ErrClosedStream = Error{"closed stream"}
+	// ErrUnacceptableStream indicates that the stream is unacceptable.
+	ErrUnacceptableStream = Error{"unacceptable stream"}
+
 	// ErrUnexpectedToken indicates that an unexpected token was encountered.
 	ErrUnexpectedToken = Error{"unexpected token"}
+
+	// ErrUnexpectedEOF indicates that an unexpected EOF was encountered.
+	ErrUnexpectedEOF = Error{"unexpected end of file"}
+	// ErrEOF indicates that the end of file was reached.
+	ErrEOF = Error{"end of file"}
 )
 
 type IncompleteParseError struct {
@@ -89,7 +99,7 @@ type IncompleteParseError struct {
 	Lvl int // Verbose level for error reporting
 }
 
-func (e *IncompleteParseError) Error() string {
+func (e IncompleteParseError) Error() string {
 	var src strings.Builder
 
 	for i, s := range e.Src {
@@ -164,7 +174,7 @@ type NamespaceError struct {
 	Err error
 }
 
-func (e *NamespaceError) Error() string {
+func (e NamespaceError) Error() string {
 	var id string
 	if e.ID != "" {
 		id = fmt.Sprintf(" (in namespace %q)", e.ID)
@@ -178,7 +188,7 @@ func (e *NamespaceError) Error() string {
 	return fmt.Sprintf("%v%s", ee, id)
 }
 
-func (e *NamespaceError) position() string {
+func (e NamespaceError) position() string {
 	ue := new(UnexpectedTokenError)
 	if errors.As(e.Err, &ue) {
 		return fmt.Sprintf("[%d:%d]", ue.Tok.Pos.Line, ue.Tok.Pos.Column)
@@ -188,15 +198,19 @@ func (e *NamespaceError) position() string {
 }
 
 type ExpressionError struct {
-	NS  string
-	Var string
-	Err error
+	Namespace string
+	Statement string
+	Err       error
 }
 
-func (e *ExpressionError) Error() string {
+func (e ExpressionError) Error() string {
 	var id, ap string
-	if e.NS != "" {
-		id = fmt.Sprintf(" (expression %q in namespace %q)", e.Var, e.NS)
+	if e.Namespace != "" {
+		id = fmt.Sprintf(
+			" (expression %q in namespace %q)",
+			e.Statement,
+			e.Namespace,
+		)
 	}
 
 	ee, ue := e.Err, new(file.Error)
@@ -208,7 +222,7 @@ func (e *ExpressionError) Error() string {
 	return fmt.Sprintf("%v%s%s", ee, id, ap)
 }
 
-func (e *ExpressionError) position() string {
+func (e ExpressionError) position() string {
 	ue := new(file.Error)
 	if errors.As(e.Err, &ue) {
 		return fmt.Sprintf("[%d:%d]", ue.Line, ue.Column)
@@ -222,14 +236,15 @@ type UnexpectedTokenError struct {
 	Msg []string
 }
 
-func (e *UnexpectedTokenError) Error() string {
+func (e UnexpectedTokenError) Error() string {
 	var sb strings.Builder
 
-	if e.Tok != nil {
-		if e.Tok.Value != "" {
-			sb.WriteRune(' ')
-			sb.WriteString(strconv.Quote(e.Tok.Value))
-		}
+	switch {
+	case e.Tok.Type == lexer.EOF:
+		sb.WriteString(" end of file (EOF)")
+	case e.Tok.Value != "":
+		sb.WriteRune(' ')
+		sb.WriteString(strconv.Quote(e.Tok.Value))
 	}
 
 	for _, n := range e.Msg {

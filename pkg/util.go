@@ -232,8 +232,8 @@ func FilterKeys[K comparable, V any](
 	}
 }
 
-// ParseASCII ensures the given byte slice may contain only a sequence of
-// commonly-used ASCII characters, which may optionally contain a
+// ParseASCII ensures the given byte slice contains nothing or a sequence
+// of commonly-used ASCII characters, which may optionally contain a
 // terminating null byte ('\0'), and returns that sequence as a string
 // without the terminating null byte.
 //
@@ -274,7 +274,7 @@ func ParseASCII(b []byte) (string, bool) {
 // The zero value of Unique is an empty set and is safe to use.
 //
 // Test for set membership with [Unique.Has].
-// Use [Unique.Set] to simultaneously test for membership and add an element.
+// Use [Unique.Set] to test for membership before also adding an element.
 type Unique[T comparable] map[T]struct{}
 
 // Has returns whether the receiver contains the given value.
@@ -286,8 +286,7 @@ func (u Unique[T]) Has(v T) bool {
 
 // Add adds the given value to the receiver.
 //
-// Use [Unique.Set] to determine whether the value was added or was already
-// present.
+// Use [Unique.Set] to determine whether the value was already present.
 func (u Unique[T]) Add(v T) {
 	u[v] = struct{}{}
 }

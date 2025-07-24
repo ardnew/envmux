@@ -22,55 +22,51 @@ type Env[T any] map[string]T
 // parameter of the current expression evaluation.
 var ParameterKey = `_` //nolint:gochecknoglobals
 
-// Cache returns the process environment cache.
-//
-// Returns a copy to prevent modification of the singleton.
-func Cache() Env[any] {
-	// Use sync.Once with a private variable to store the singleton
-	// instead of recreating the map on each call
-	return maps.Clone(envCache())
-}
-
 // Private singleton cache.
 //
 //nolint:gochecknoglobals
 var (
 	envCacheOnce sync.Once
 	envCacheVal  Env[any]
-	envCache     = func() Env[any] {
-		envCacheOnce.Do(func() {
-			envCacheVal = Env[any]{
-				"target":   getTarget(),
-				"platform": getPlatform(),
-				"hostname": getHostname(),
-				"user":     getUser(),
-				"shell":    getShell(),
-
-				// Functions
-				"cwd": cwd,
-				"file": map[string]any{
-					"exists":    fileExists,
-					"isDir":     fileIsDir,
-					"isRegular": fileIsRegular,
-					"isSymlink": fileIsSymlink,
-					"perms":     filePerm,
-					"stat":      fileStat,
-				},
-				"path": map[string]any{
-					"abs": pathAbs,
-					"cat": pathCat,
-					"rel": pathRel,
-				},
-				"mung": map[string]any{
-					"prefix":   mungPrefix,
-					"prefixif": mungPrefixIf,
-				},
-			}
-		})
-
-		return envCacheVal
-	}
 )
+
+// Cache returns a copy of the process environment cache.
+// Always use this function to access the environment map.
+func Cache() Env[any] {
+	envCacheOnce.Do(func() {
+		envCacheVal = Env[any]{
+			"target":   getTarget(),
+			"platform": getPlatform(),
+			"hostname": getHostname(),
+			"user":     getUser(),
+			"shell":    getShell(),
+
+			// Functions
+			"cwd": cwd,
+			"file": map[string]any{
+				"exists":    fileExists,
+				"isDir":     fileIsDir,
+				"isRegular": fileIsRegular,
+				"isSymlink": fileIsSymlink,
+				"perms":     filePerm,
+				"stat":      fileStat,
+			},
+			"path": map[string]any{
+				"abs": pathAbs,
+				"cat": pathCat,
+				"rel": pathRel,
+			},
+			"mung": map[string]any{
+				"prefix":   mungPrefix,
+				"prefixif": mungPrefixIf,
+			},
+		}
+	})
+
+	// envCache() returns the singleton map,
+	// but we always clone it to prevent mutation.
+	return maps.Clone(envCacheVal)
+}
 
 // ContextKey is the identifier used by [github.com/expr-lang/expr] internally
 // to manage the evaluation [context.Context] of expressions.

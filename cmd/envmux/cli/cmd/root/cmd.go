@@ -156,6 +156,12 @@ func (r Root) Init() cmd.Node { //nolint:ireturn
 				LongHelp:  longHelp,
 			},
 			func(ctx context.Context, args []string) error {
+				// Initialize the profiler with all profiling modes provided
+				// via the command-line flags.
+				// If no profiling modes are provided, the profiler is not started.
+				//
+				// Note that profiling is only available when built with "-tags pprof".
+				// Otherwise, this is a no-op.
 				defer prof.Init(r.Profile...).Stop()
 
 				if r.Version {
@@ -204,9 +210,9 @@ func (r Root) Init() cmd.Node { //nolint:ireturn
 				e, err := pkg.Make(
 					env.WithMaxParallelJobs(r.MaxJobs),
 					env.WithEvalRequiresDef(r.ReqDef),
-				).Parse(io.MultiReader(src...))
+				).Parse(ctx, io.MultiReader(src...))
 				if err != nil {
-					return &pkg.IncompleteParseError{
+					return pkg.IncompleteParseError{
 						Err: err, Src: r.Source, Lvl: r.VerboseLevel(),
 					}
 				}

@@ -1,6 +1,7 @@
 package parse
 
 import (
+	"context"
 	"io"
 	"strconv"
 	"sync"
@@ -9,6 +10,7 @@ import (
 	"github.com/alecthomas/participle/v2"
 	"github.com/alecthomas/participle/v2/lexer"
 
+	"github.com/ardnew/envmux/config/parse/stream"
 	"github.com/ardnew/envmux/pkg"
 )
 
@@ -26,10 +28,10 @@ var (
 	RS = `;`  // RS matches a record separator.
 	NL = `\n` // NL matches a newline character.
 
-	co, cc, cp = `<`, `>`, `\` + co + `\` + cc
-	so, sc, sp = `{`, `}`, `\` + so + `\` + sc
-	po, pc, pp = `(`, `)`, `\` + po + `\` + pc
-	ao, ac, ap = `[`, `]`, `\` + ao + `\` + ac
+	co, cc, cp = `<`, `>`, "\\" + co + "\\" + cc
+	so, sc, sp = `{`, `}`, "\\" + so + "\\" + sc
+	po, pc, pp = `(`, `)`, "\\" + po + "\\" + pc
+	ao, ac, ap = `[`, `]`, "\\" + ao + "\\" + ac
 	bp         = cp + sp + pp + ap
 
 	// NS matches a namespace identifier.
@@ -167,16 +169,16 @@ var LexerGenerator = sync.OnceValue( //nolint:gochecknoglobals
 
 				{Name: `NS`, Pattern: NS, Action: nil},
 
-				{Name: `CO`, Pattern: `\` + co, Action: lexer.Push(`Composites`)},
-				{Name: `PO`, Pattern: `\` + po, Action: lexer.Push(`Parameters`)},
-				{Name: `SO`, Pattern: `\` + so, Action: lexer.Push(`Statements`)},
+				{Name: `CO`, Pattern: "\\" + co, Action: lexer.Push(`Composites`)},
+				{Name: `PO`, Pattern: "\\" + po, Action: lexer.Push(`Parameters`)},
+				{Name: `SO`, Pattern: "\\" + so, Action: lexer.Push(`Statements`)},
 			},
 
 			`Composites`: {
 				lexer.Include(`Global`),
 
-				{Name: `CC`, Pattern: `\` + cc, Action: lexer.Pop()},
-				{Name: `PO`, Pattern: `\` + po, Action: lexer.Push(`Parameters`)},
+				{Name: `CC`, Pattern: "\\" + cc, Action: lexer.Pop()},
+				{Name: `PO`, Pattern: "\\" + po, Action: lexer.Push(`Parameters`)},
 
 				{Name: `FS`, Pattern: FS, Action: nil},
 
@@ -187,7 +189,7 @@ var LexerGenerator = sync.OnceValue( //nolint:gochecknoglobals
 			`Parameters`: {
 				lexer.Include(`Global`),
 
-				{Name: `PC`, Pattern: `\` + pc, Action: lexer.Pop()},
+				{Name: `PC`, Pattern: "\\" + pc, Action: lexer.Pop()},
 
 				{Name: `FS`, Pattern: FS, Action: nil},
 
@@ -199,8 +201,10 @@ var LexerGenerator = sync.OnceValue( //nolint:gochecknoglobals
 			`Statements`: {
 				lexer.Include(`Global`),
 
-				{Name: `SO`, Pattern: `\` + so, Action: lexer.Push(`Statements`)},
-				{Name: `SC`, Pattern: `\` + sc, Action: lexer.Pop()},
+				{Name: `SO`, Pattern: "\\" + so, Action: lexer.Push(`Statements`)},
+				{Name: `SC`, Pattern: "\\" + sc, Action: lexer.Pop()},
+
+				{Name: `RS`, Pattern: RS, Action: nil},
 
 				{Name: `ID`, Pattern: ID, Action: nil},
 				{Name: `OP`, Pattern: `=`, Action: nil},
@@ -211,75 +215,50 @@ var LexerGenerator = sync.OnceValue( //nolint:gochecknoglobals
 )
 
 //nolint:gochecknoglobals
-var symbol = sync.OnceValue(
-	func() func(token string) lexer.TokenType {
-		sym := LexerGenerator().Symbols()
-
-		return func(token string) lexer.TokenType {
-			typ, ok := sym[token]
-			if !ok {
-				panic("invalid lexer symbol: " + strconv.Quote(token))
-			}
-
-			return typ
-		}
-	},
-)
-
-// statementTerminator is the reason for delimiting the end of a statement.
-type terminate byte
-
-const (
-	unterminated terminate = iota
-	atError
-	atEOF
-	atNL
-	atRS
-	atSC
-)
-
-// consume returns a function that discards all tokens from the given lexer
-// whose type matches any provided symbol and returns before consuming the next
-// token that does not match any provided symbol.
-//
-// EOF will never be consumed even if it is one of the given symbols.
-// The returned function will return immediately before consuming EOF and
-// returns whether more tokens are available (next token is not EOF).
-func consume(lex *lexer.PeekingLexer, sym ...string) func() (eof bool) {
-	table := make(map[lexer.TokenType]struct{}, len(sym))
-
-	for _, s := range sym {
-		table[symbol()(s)] = struct{}{}
+func tokenType(symbol string) lexer.TokenType {
+	typ, ok := ConfigLexer.Symbols()[symbol]
+	if !ok {
+		panic("invalid lexer symbol: " + strconv.Quote(symbol))
 	}
 
-	halt := func(tok *lexer.Token) bool {
-		if tok == nil || tok.EOF() {
-			return true
-		}
-
-		_, discard := table[tok.Type]
-
-		return !discard
-	}
-
-	return func() bool {
-		for !halt(lex.Peek()) {
-			_ = lex.Next() // Discard the token.
-		}
-
-		return !lex.Peek().EOF()
-	}
+	return typ
 }
 
 // AST is the root node of the parsed configuration file.
 //
-// It consumes tokens from the `Root` state of the lexer.
+// It is the sole [participle.Parseable] type in this package,
+// which makes it the sole entry and exit point for lexing and parsing.
+//
+// Lexing is performed by the auto-generated [ConfigLexer].
+//
+// The AST initiates an asynchronous lexer via [GoLex] that emits tokens
+// to a channel [Stream.Tokens]. These tokens are consumed incrementally
+// in a [Parser] pipeline formed by elements of the grammar.
+//
+// If any stage of the pipeline consumes an unexpected token, an error is
+// returned by cancelling the pipeline [context.Context] via [Stream.Cancel]
+// with the error as the cause.
 type AST struct {
-	Pos    lexer.Position // Pos records the start position of the node.
-	EndPos lexer.Position // EndPos records the end position of the node.
-	Tokens []lexer.Token  // Tokens records the tokens consumed by the node
+	Namespaces []Namespace
+}
 
-	Defs *namespaces `parser:"@@"`
+// Parse constructs the AST from the provided [lexer.PeekingLexer].
+func (a *AST) Parse(lex *lexer.PeekingLexer) error {
+	sym := tokenType()
+	ctx := stream.MakeContext(context.Background(), sym)
+	grp := stream.Tokens(ctx, lex)
+
+	for ns := range namespaces(ctx, &grp).Channel {
+		a.Namespaces = append(a.Namespaces, ns)
+	}
+
+	// if err := grp.Wait(); !errors.Is(err, pkg.ErrEOF) {
+	// grp.CancelCauseFunc(err)
+	//
+	// return err
+	// }
+
+	return grp.Wait()
 }
 
 // Options are the default participle options used to build the parser.
@@ -301,26 +280,15 @@ func TraceOptions(w io.Writer) []participle.ParseOption {
 	return opt
 }
 
-// build returns a singleton parser for the AST type.
-//
-//nolint:gochecknoglobals
-var build = sync.OnceValue(
-	func() *participle.Parser[AST] {
-		return participle.MustBuild[AST](Options...)
-	},
-)
+// build returns a parser for the AST type.
+func build() *participle.Parser[AST] {
+	return participle.MustBuild[AST](Options...)
+}
+
+// Make parses and returns an [AST] from the provided [io.Reader].
+func Make(ctx context.Context, r io.Reader) (*AST, error) {
+	return build().Parse(pkg.Name, r, ParseOptions...)
+}
 
 // EBNF returns the parser grammar as a string in Extended Backus-Naur Form.
 func EBNF() string { return build().String() }
-
-// Make returns a function that parses an [AST] from the provided [io.Reader].
-func Make(r io.Reader) func() (*AST, error) {
-	return func() (*AST, error) {
-		ast, err := build().Parse(pkg.Name, r, ParseOptions...)
-		if err != nil {
-			return nil, err
-		}
-
-		return ast, nil
-	}
-}

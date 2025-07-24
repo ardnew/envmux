@@ -26,21 +26,21 @@ type lexerConfigDefinitionImpl struct{}
 
 func (lexerConfigDefinitionImpl) Symbols() map[string]lexer.TokenType {
 	return map[string]lexer.TokenType{
-		"AA":  -30,
+		"AA":  -31,
 		"CC":  -3,
 		"CO":  -21,
-		"EE":  -31,
+		"EE":  -32,
 		"EOF": -1,
-		"EX":  -29,
+		"EX":  -30,
 		"FS":  -13,
-		"ID":  -27,
+		"ID":  -28,
 		"NS":  -20,
 		"NU":  -15,
-		"OP":  -28,
+		"OP":  -29,
 		"PC":  -12,
 		"PO":  -22,
 		"QQ":  -14,
-		"RS":  -19,
+		"RS":  -27,
 		"SC":  -26,
 		"SO":  -25,
 		"XX":  -24,
@@ -119,7 +119,7 @@ func (l *lexerConfigImpl) Next() (lexer.Token, error) {
 		}
 	case "Escaped":
 		if match := matchConfigEE(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -31
+			sym = -32
 			groups = match[:]
 		}
 	case "Global":
@@ -150,12 +150,12 @@ func (l *lexerConfigImpl) Next() (lexer.Token, error) {
 			sym = -15
 			groups = match[:]
 		} else if match := matchConfigID(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -27
+			sym = -28
 			groups = match[:]
 		}
 	case "Printable":
 		if match := matchConfigAA(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -30
+			sym = -31
 			groups = match[:]
 		}
 	case "Root":
@@ -163,7 +163,7 @@ func (l *lexerConfigImpl) Next() (lexer.Token, error) {
 			sym = -24
 			groups = match[:]
 		} else if match := matchConfigRS(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -19
+			sym = -27
 			groups = match[:]
 		} else if match := matchConfigNS(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
 			sym = -20
@@ -193,22 +193,25 @@ func (l *lexerConfigImpl) Next() (lexer.Token, error) {
 			sym = -26
 			groups = match[:]
 			l.states = l.states[:len(l.states)-1]
-		} else if match := matchConfigID(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
+		} else if match := matchConfigRS(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
 			sym = -27
 			groups = match[:]
-		} else if match := matchConfigOP(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
+		} else if match := matchConfigID(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
 			sym = -28
 			groups = match[:]
-		} else if match := matchConfigEX(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
+		} else if match := matchConfigOP(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
 			sym = -29
+			groups = match[:]
+		} else if match := matchConfigEX(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
+			sym = -30
 			groups = match[:]
 		}
 	case "Wildcard":
 		if match := matchConfigAA(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -30
+			sym = -31
 			groups = match[:]
 		} else if match := matchConfigEE(l.s, l.p, l.states[len(l.states)-1].groups); match[1] != 0 {
-			sym = -31
+			sym = -32
 			groups = match[:]
 		}
 	}

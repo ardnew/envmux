@@ -1,29 +1,21 @@
 package parse
 
 import (
-	"fmt"
+	"context"
+	"errors"
 	"strings"
 
-	"github.com/alecthomas/participle/v2/lexer"
-
+	"github.com/ardnew/envmux/config/parse/stream"
 	"github.com/ardnew/envmux/pkg"
 )
 
-// Expression is a container for the semantic information of an Expression node.
+// Expression contains the text of an Expression recognized by the
+// [github.com/expr-lang/expr] grammar.
 type Expression struct {
 	Src string
 }
 
-// expression represents an expression node in the AST.
-type expression struct {
-	Pos    lexer.Position // Pos records the start position of the node.
-	EndPos lexer.Position // EndPos records the end position of the node.
-	Tokens []lexer.Token  // Tokens records the tokens consumed by the node.
-
-	Expression
-}
-
-func (e *expression) String() string {
+func (e *Expression) String() string {
 	if e == nil {
 		return ""
 	}
@@ -31,62 +23,73 @@ func (e *expression) String() string {
 	return e.Src
 }
 
-// Parse parses an expression using the provided lexer
-// and stores the unevaluated source code in the Expr's Src field.
-// Returns an error if parsing fails.
-func (e *expression) Parse(lex *lexer.PeekingLexer) (err error) {
-	if e.Src, err = e.parse(lex); err != nil {
-		if e.Src != "" {
-			return fmt.Errorf("%w %q: %w", pkg.ErrInvalidExpression, e.Src, err)
-		}
+func expressions(
+	ctx context.Context,
+	ns, id, op string,
+	sg *stream.Group[stream.Token],
+) stream.Group[Expression] {
+	var getType stream.TypeResolver = tokenType()
 
-		return err
+	var bracketDepth int
+
+	// Include a predicate that ensures brackets are balanced.
+	balancedBracket := bracketBalancer(&bracketDepth, bracketAngles)
+
+	accept := func(tok stream.Token) bool {
+		return balancedBracket(tok) &&
+			true // TBD: other predicates
 	}
 
-	return nil
-}
+	var stage stream.Stage[Expression] = func() (Expression, error) {
+		var sb strings.Builder
+		for {
+			tok, err := sg.Accept(accept)
 
-func (e *expression) parse(lex *lexer.PeekingLexer) (string, error) {
-	var sb strings.Builder
-
-	err := makeBracketParser(lex, bracketComposite)(
-		func(token *lexer.Token, depth int) (terminate, error) {
-			var result terminate
-
-			if token.EOF() {
-				result = atEOF
-			} else {
-				switch token.Value {
-				case NL:
-					result = atNL
-				case RS:
-					result = atRS
-				case sc:
-					if depth == 0 {
-						token.Value = RS
-						result = atSC
+			if bracketDepth > 0 {
+				switch {
+				case errors.Is(err, pkg.ErrClosedStream):
+					return Expression{Src: sb.String()}, pkg.ErrUnexpectedEOF
+				case errors.Is(err, pkg.ErrUnacceptableStream):
+					return Expression{Src: sb.String()}, pkg.ExpressionError{
+						Namespace: ns,
+						Statement: id,
+						Err: pkg.UnexpectedTokenError{
+							Tok: tok.Lexeme(),
+							Msg: []string{`unbalanced brackets in expression`},
+						},
 					}
 				}
+			} else {
+				switch {
+				case errors.Is(err, pkg.ErrClosedStream):
+					return Expression{Src: sb.String()}, pkg.ErrEOF
+				case errors.Is(err, pkg.ErrUnacceptableStream):
+					return Expression{Src: sb.String()}, pkg.ExpressionError{
+						Namespace: ns,
+						Statement: id,
+						Err: pkg.UnexpectedTokenError{
+							Tok: tok.Lexeme(),
+							Msg: []string{`expected expression`},
+						},
+					}
+				}
+
+				sb.WriteString(tok.Value)
+
+				if tok, err = sg.Accept(getType.Predicate(`EX`)); err == nil {
+					sb.WriteString(tok.Value)
+				}
+
+				if _, err := sg.AcceptAny(getType.Predicates(`RS`, `SC`)...); err == nil {
+					if tok.Type != getType(`RS`) {
+						sb.WriteString(RS) // terminate the expression
+					}
+
+					return Expression{Src: sb.String()}, nil
+				}
 			}
-
-			if len(e.Tokens) == 0 {
-				e.Pos = token.Pos
-				e.EndPos = token.Pos
-			}
-
-			e.EndPos.Advance(token.Value)
-			e.Tokens = append(e.Tokens, *token)
-
-			if _, err := sb.WriteString(token.Value); err != nil {
-				return atError, err
-			}
-
-			return result, nil
-		},
-	)
-	if err != nil {
-		return "", err
+		}
 	}
 
-	return sb.String(), nil
+	return pkg.Make(stage.Pipe(ctx))
 }

@@ -33,8 +33,8 @@ type Model struct {
 
 // Parse reads a namespace definition from the given [io.Reader] and returns a
 // [Model] that can be used to evaluate constructed environments.
-func (m Model) Parse(r io.Reader) (Model, error) {
-	ast, err := parse.Make(r)()
+func (m Model) Parse(ctx context.Context, r io.Reader) (Model, error) {
+	ast, err := parse.Make(ctx, r)
 	if err != nil {
 		return Model{}, err
 	}
@@ -89,6 +89,12 @@ func (m Model) String() string {
 
 func (m Model) IsZero() bool { return m.AST == nil }
 
+// func (m Model) Eval(
+// 	ctx context.Context, namespaces ...string,
+// ) (vars.Env[any], error) {
+// 	return nil, nil
+// }
+
 func (m Model) Eval(
 	ctx context.Context, namespaces ...string,
 ) (vars.Env[any], error) {
@@ -98,7 +104,7 @@ func (m Model) Eval(
 
 	list := make([]parse.Composite, len(s))
 	for i, id := range s {
-		list[i] = parse.Composite{ID: id}
+		list[i] = parse.Composite{Ident: id}
 	}
 
 	env, err := m.eval(ctx, list...)
@@ -112,13 +118,13 @@ type parameterEnv struct {
 }
 
 func (m Model) eval(
-	ctx context.Context, namespaces ...parse.Composite,
+	ctx context.Context, composites ...parse.Composite,
 ) (parameterEnv, error) {
-	if len(namespaces) == 0 {
+	if len(composites) == 0 {
 		return parameterEnv{}, nil //nolint:exhaustruct
 	}
 
-	maxJobs := min(len(namespaces), runtime.NumCPU())
+	maxJobs := min(len(composites), runtime.NumCPU())
 	if m.MaxParallelJobs <= 0 {
 		m.MaxParallelJobs = maxJobs
 	}
@@ -133,8 +139,8 @@ func (m Model) eval(
 	// If we have only one job, run the evaluations serially in this goroutine
 	// and don't fan out additional goroutines.
 	if m.MaxParallelJobs == 1 {
-		for _, ns := range namespaces {
-			e, err := m.evalNamespace(ctx, ns)
+		for _, co := range composites {
+			e, err := m.evalComposition(ctx, co)
 			if err != nil {
 				return parameterEnv{}, err
 			}
@@ -144,8 +150,8 @@ func (m Model) eval(
 	} else {
 		// Evaluate all namespaces in parallel,
 		// returning a slice of fully-evaluated environments.
-		for group := range slices.Chunk(namespaces, maxJobs) {
-			envs, err := flowmatic.Map(ctx, len(group), group, m.evalNamespace)
+		for group := range slices.Chunk(composites, maxJobs) {
+			envs, err := flowmatic.Map(ctx, len(group), group, m.evalComposition)
 			if err != nil {
 				return parameterEnv{}, err
 			}
@@ -172,62 +178,110 @@ func export(sub ...parameterEnv) pkg.Option[parameterEnv] {
 	}
 }
 
-func (m Model) evalNamespace(
+// FindDuplicateNamespaces is a debug option that panics on the
+// detection of duplicate namespace definitions in the model,
+//
+// These most likely occur when a namespace is composed of itself
+// indirectly or when the same source is included multiple times.
+const findDuplicateNamespaces = false
+
+func (m Model) evalComposition(
 	ctx context.Context,
-	namespace parse.Composite,
+	composite parse.Composite,
 ) (parameterEnv, error) {
-	match := func(filtered parse.Namespace) bool {
-		return filtered.ID == namespace.ID
+	matchIdent := func(ns parse.Namespace) bool {
+		return ns.Ident == composite.Ident
 	}
 
-	// This loop will iterate at maximum one time,
-	// even if multiple namespaces with the given name exist.
-	// The first namespace found will be used to evaluate the environment.
-	for space := range pkg.Filter(m.Defs.Seq(), match) {
-		// If the namespace is composed of other namespaces,
-		// first add their evaluated environments to the current scope,
-		// then add their mappings to the current environment.
-		// This enables evaluation of nested namespaces with ancestor parameters.
-		env := parameterEnv{
-			eval: vars.Env[any]{},
-			pars: []any{},
+	// Locate the first namespace in the receiver whose identifier
+	// matches the given composite namespace identifier.
+	//
+	// This protects against duplicate namespace definitions
+	// and recursive namespace compositions,
+	// but it doesn't currently notify the user of such conflicts.
+	idx := slices.IndexFunc(m.Namespaces, matchIdent)
+
+	// Verify that the namespace exists in the model.
+	if idx < 0 {
+		// Throw an error if we have enabled the option that
+		// requires a definition for each namespace evaluated.
+		if m.EvalRequiresDef {
+			return parameterEnv{}, fmt.Errorf(
+				"%w: %q is undefined",
+				pkg.ErrInvalidNamespace,
+				composite,
+			)
 		}
 
-		if space.Com.Len() > 0 {
-			var err error
+		// Otherwise, we silently ignore unknown namespaces.
+		return parameterEnv{}, nil //nolint:exhaustruct
+	}
 
-			env, err = m.eval(ctx, slices.Collect(space.Com.Seq())...)
-			if err != nil {
-				return parameterEnv{}, err
+	// This is the real namespace def resolved
+	// from the given composite namespace identifier.
+	def := m.Namespaces[idx]
+
+	if findDuplicateNamespaces {
+		// Now that it has been resolved, we can search for duplicate definitions
+		// (and not just duplicate identifiers).
+		matchDups := func(s string) func(ns parse.Namespace) bool {
+			return func(ns parse.Namespace) bool {
+				return ns.String() == s
+			}
+		}(def.String())
+
+		pos, dup := idx, make([]int, 0, len(m.Namespaces)-idx-1)
+
+		for 0 <= pos && pos < len(m.Namespaces)-1 {
+			off := pos + 1
+			if pos = slices.IndexFunc(m.Namespaces[off:], matchDups); pos >= 0 {
+				dup = append(dup, off+pos)
 			}
 		}
 
-		// Collect the parameters from the namespace and the environment.
-		pars := slices.Concat(slices.Collect(space.Par.Values()), env.pars,
-			slices.Collect(namespace.Params.Values()))
+		if numDuplicates := len(dup); numDuplicates > 0 {
+			panic(fmt.Sprintf(
+				"found %d duplicate definitions for namespace:\n\t%s\n",
+				numDuplicates,
+				def.String(),
+			))
+		}
+	}
 
-		// Evaluate mappings
-		for dict := range space.Sta.Seq() {
-			v, err := m.evalMapping(ctx, space, dict, env.eval, pars)
-			if err != nil {
-				return parameterEnv{}, err
-			}
+	env := parameterEnv{
+		eval: vars.Env[any]{},
+		pars: []any{},
+	}
 
-			maps.Copy(env.eval, v)
+	// Recursively evaluate and collect the environments of
+	// all composite namespaces declared by the current namespace.
+	if len(def.Composites) > 0 {
+		var err error
+
+		env, err = m.eval(ctx, def.Composites...)
+		if err != nil {
+			return parameterEnv{}, err
+		}
+	}
+
+	// Collect all parameters:
+	par := slices.Concat(
+		slices.Collect(def.Arguments()),       // namespace definition
+		env.pars,                              // composite definitions
+		slices.Collect(composite.Arguments()), // composite inline parameters
+	)
+
+	// Evaluate mappings
+	for _, sta := range def.Statements {
+		v, err := m.evalMapping(ctx, def, sta, env.eval, par)
+		if err != nil {
+			return parameterEnv{}, err
 		}
 
-		return env, nil
+		maps.Copy(env.eval, v)
 	}
 
-	if m.EvalRequiresDef {
-		return parameterEnv{}, fmt.Errorf(
-			"%w: %q is undefined",
-			pkg.ErrInvalidNamespace,
-			namespace,
-		)
-	}
-
-	return parameterEnv{}, nil //nolint:exhaustruct
+	return env, nil
 }
 
 func collect(e vars.Env[any]) vars.Env[any] {
@@ -261,10 +315,10 @@ func (m Model) evalMapping(
 	}
 
 	// Compile expression
-	program, err := expr.Compile(dict.Ex.Src, opt...)
+	program, err := expr.Compile(dict.Expression.Src, opt...)
 	if err != nil {
-		return nil, &pkg.ExpressionError{
-			NS: space.ID, Var: dict.ID, Err: err,
+		return nil, pkg.ExpressionError{
+			Namespace: space.Ident, Statement: dict.Ident, Err: err,
 		}
 	}
 
@@ -287,7 +341,7 @@ func (m Model) evalMapping(
 			return nil, err
 		}
 
-		env[dict.ID] = pkg.Unquote(res)
+		env[dict.Ident] = pkg.Unquote(res)
 	}
 
 	return collect(env), nil

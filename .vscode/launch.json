@@ -55,7 +55,7 @@
         "-v",
         "-u",
         "-s",
-        "=default{x=$env[\"FOO\"]"
+        "=default<foo(\"xyz\"), bar>(){} foo(123) bar(\"abc\"){x=1;}",
       ],
       "cwd": "${workspaceFolder}",
       "stopOnEntry": false,

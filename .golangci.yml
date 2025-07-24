@@ -9,6 +9,7 @@ linters:
     - varnamelen
     - wrapcheck
     - forbidigo
+    - gocritic
   exclusions:
     generated: strict
     warn-unused: true
