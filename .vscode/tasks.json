@@ -2,12 +2,12 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "generate: lexer",
+      "label": "generate: parser",
       "type": "shell",
       "command": "go",
       "args": [
         "generate",
-        "./config/parse/..."
+        "./spec/parse/..."
       ],
       "options": {
         "cwd": "${workspaceFolder}",
@@ -19,7 +19,7 @@
       },
       "presentation": {
         "echo": true,
-        "reveal": "silent",
+        "reveal": "never",
         "revealProblems": "onProblem",
         "focus": false,
         "panel": "shared",

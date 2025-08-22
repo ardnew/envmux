@@ -1,3 +1,0 @@
-# The JSON rules file is used as an intermediate step required by participle to
-# generate a high-performance lexer. See generate.sh for more details.
-rules.json

@@ -9,11 +9,11 @@ import (
 
 	"github.com/pkg/profile"
 
-	"github.com/ardnew/envmux/pkg"
+	"github.com/ardnew/envmux/pkg/fn"
 )
 
 func Modes() []string {
-	return slices.Collect(pkg.Filter(
+	return slices.Collect(fn.Filter(
 		maps.Keys(mode),
 		func(k string) bool { return k != "quiet" },
 	))
@@ -43,7 +43,7 @@ type control struct {
 }
 
 func (c control) start(args ...string) interface{ Stop() } {
-	opt := []pkg.Option[control]{}
+	opt := []fn.Option[control]{}
 	arg := []string{}
 
 	for _, p := range args {
@@ -54,7 +54,7 @@ func (c control) start(args ...string) interface{ Stop() } {
 		}
 	}
 
-	c = pkg.Wrap(c, append(opt, withhMode(arg...))...)
+	c = fn.Wrap(c, append(opt, withhMode(arg...))...)
 
 	if c.path != "" {
 		c.mode = append(c.mode, profile.ProfilePath(c.path))
@@ -67,9 +67,9 @@ func (c control) start(args ...string) interface{ Stop() } {
 	return profile.Start(c.mode...)
 }
 
-func withhMode(modes ...string) pkg.Option[control] {
+func withhMode(modes ...string) fn.Option[control] {
 	return func(c control) control {
-		seen := pkg.Unique[string]{}
+		seen := fn.Unique[string]{}
 
 		for _, m := range modes {
 			if fn, ok := mode[m]; ok && seen.Set(m) {
@@ -85,7 +85,7 @@ func withhMode(modes ...string) pkg.Option[control] {
 	}
 }
 
-func withhPath(path string) pkg.Option[control] {
+func withhPath(path string) fn.Option[control] {
 	return func(c control) control {
 		c.path += path
 		return c

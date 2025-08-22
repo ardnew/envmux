@@ -1,0 +1,197 @@
+package parse
+
+import "strings"
+
+type parser Peg {
+	Namespaces []Namespace
+
+  idx int
+}
+
+Spec <- ___ ( NamespaceSpec { p.idx = len(p.Namespaces) } ___ )* EndOfFile
+
+NamespaceSpec <- NamespaceCapture CompositeSpec? ParameterSpec? StatementSpec?
+NamespaceName <- CommonName
+
+NamespaceCapture <- < NamespaceName > {
+  p.Namespaces = append(
+    p.Namespaces, Namespace{Ident: text},
+  )
+}
+
+CompositeSpec <- InitCompositeMeta CompositeList* TermCompositeMeta
+CompositeList <- SeqDelim / CompositePair ( SeqDelim CompositePair )*
+CompositePair <- CompositeCapture CompositeMeta?
+
+CompositeCapture <- < NamespaceName > {
+  p.Namespaces[p.idx].Composites = append(
+    p.Namespaces[p.idx].Composites, Composite{Ident: text},
+  )
+}
+
+CompositeMeta <- InitParameterMeta CompositeArgs* TermParameterMeta
+CompositeArgs <- SeqDelim / ArgumentCapture ( SeqDelim ArgumentCapture )*
+
+ArgumentCapture <- < ParameterItem > {
+  idx := len(p.Namespaces[p.idx].Composites) - 1
+  p.Namespaces[p.idx].Composites[idx].arguments = append(
+    p.Namespaces[p.idx].Composites[idx].arguments, Argument{Value: text},
+  )
+}
+
+ParameterSpec <- InitParameterMeta ParameterList* TermParameterMeta
+ParameterList <- SeqDelim / ParameterCapture ( SeqDelim ParameterCapture )*
+ParameterItem <- Identifier / NumLiteral / StrLiteral
+
+ParameterCapture <- < ParameterItem > {
+  p.Namespaces[p.idx].Parameters = append(
+    p.Namespaces[p.idx].Parameters, Parameter{Value: text},
+  )
+}
+
+StatementSpec <- InitStatementMeta StatementList* TermStatementMeta
+StatementList <- SetDelim / StatementCapture ( SetDelim StatementCapture )*
+
+StatementAssn <- Identifier AssnStatementMeta StatementEval
+StatementEval <- StatementExpr / StatementAtom
+StatementAtom <- ( !SetDelim !InitStatementMeta !TermStatementMeta . )+
+StatementExpr <- InitStatementMeta StatementEval* TermStatementMeta
+
+StatementCapture <- < StatementAssn > {
+  ident, expr, _ := strings.Cut(text, "=")
+  p.Namespaces[p.idx].Statements = append(
+    p.Namespaces[p.idx].Statements,
+    Statement{
+      Ident: strings.TrimSpace(ident),
+      Operator: "=",
+      Expression: &Expression{Src: strings.TrimSpace(expr)},
+    },
+  )
+}
+
+
+# -- WHITESPACE --
+
+EndOfLine <- CR LF / LF
+EndOfFile <- !.
+
+LineComment  <- ( HASH / SLASH SLASH ) ( !EndOfLine . )*
+BlockComment <- ( SLASH STAR ) ( !( STAR SLASH ) . )* ( STAR SLASH )
+
+Blank <- SP / TAB
+Space <- EndOfLine / Blank
+Elide <- Space / BlockComment / LineComment
+
+_   <- ( Blank )+
+___ <- ( Elide )*
+
+
+# -- IDENTIFIERS --
+
+Identifier <- IDENT_ALPHA IDENT_ALNUM*
+
+CommonWord <- !( Elide / META_SYNTAX ) .
+CommonName <- Identifier CommonWord* ( _ CommonWord+ )*
+
+
+# -- NUMBERS --
+
+# NOTE:
+#  The integral zero ('0'+) is captured as an octal literal.
+BinLiteral <- BIN_PREFIX BIN_DIGIT+
+OctLiteral <- '0' ( OCT_SIGIL? OCT_DIGIT+ )?
+DecLiteral <- DEC_NONZERO DEC_DIGIT*
+HexLiteral <- HEX_PREFIX HEX_DIGIT+
+
+Rational <- DEC_DIGIT* '.' DEC_DIGIT+ / DEC_DIGIT+ '.'
+Exponent <- EXP_SIGIL SIGN_SYMBOL? DEC_DIGIT+
+
+IntLiteral <- DecLiteral / BinLiteral / HexLiteral / OctLiteral
+FltLiteral <- Rational Exponent? / [0-9]+ Exponent
+
+NumLiteral <- SIGN_SYMBOL? ( FltLiteral / IntLiteral )
+
+
+# -- STRINGS --
+
+OctEscape <- '\\0' ( OCT_HIBITS OCT_DIGIT OCT_DIGIT / OCT_DIGIT OCT_DIGIT? )
+HexEscape <- '\\' HEX_SIGIL HEX_DIGIT HEX_DIGIT?
+SeqEscape <- '\\' [abefnrtv"\\] / OctEscape / HexEscape
+
+StrLiteral <- DQUOTE ( SeqEscape / !DQUOTE . )* DQUOTE
+
+
+# -- SYNTAX METACHARACTERS (CAPTURES ALL NON-SEMANTIC WHITESPACE) --
+
+InitCompositeMeta <-  ___ ( LANGLE ) ___
+TermCompositeMeta <-  ___ ( RANGLE ) ___
+
+InitParameterMeta <-  ___ ( LPAREN ) ___
+TermParameterMeta <-  ___ ( RPAREN ) ___
+
+InitStatementMeta <-  ___ ( LBRACE ) ___
+TermStatementMeta <-  ___ ( RBRACE ) ___
+AssnStatementMeta <-  ___ ( EQUALS ) ___
+
+SeqDelim <-  ___ COMMA ___
+SetDelim <-  ___ SEMI  ___
+
+# ,,============================================================================
+# || Terminal rules (all-uppercase identifiers)
+# ``============================================================================
+
+# NOTE:
+#  Double-quotes and double-brackets indicate case-insensitive matching,
+#  but quotes and brackets indicate case-sensitive matching.
+#
+#      [a-fA-F] <=> [[a-f]]
+#         "foo" <=> [fF] [oO] [oO]
+
+SIGN_SYMBOL <- [+\-]
+
+DEC_NONZERO <- [1-9]
+DEC_DIGIT   <- [0-9]
+BIN_DIGIT   <- [01]
+OCT_HIBITS  <- [0-3]
+OCT_DIGIT   <- [0-7]
+HEX_DIGIT   <- [[0-9a-f]]
+
+BIN_SIGIL   <- 'b'
+OCT_SIGIL   <- 'o'
+HEX_SIGIL   <- 'x'
+
+EXP_SIGIL   <- "e" # case-insensitive
+
+BIN_PREFIX  <- '0' BIN_SIGIL
+HEX_PREFIX  <- '0' HEX_SIGIL
+
+IDENT_ALPHA <- [[a-z_]]
+IDENT_ALNUM <- [[a-z0-9_]]
+
+META_SYNTAX
+  <- LANGLE / RANGLE
+   / LPAREN / RPAREN
+   / LBRACE / RBRACE
+   / SEMI / COMMA
+   / LF / CR
+
+LF  <- '\n'
+CR  <- '\r'
+TAB <- '\t'
+SP  <- ' '
+
+# -- PUNCTUATION --
+
+SEMI       <- ';'
+COMMA      <- ','
+HASH       <- '#'
+DQUOTE     <- '"'
+STAR       <- '*'
+SLASH      <- '/'
+EQUALS     <- '='
+LANGLE     <- '<'
+RANGLE     <- '>'
+LPAREN     <- '('
+RPAREN     <- ')'
+LBRACE     <- '{'
+RBRACE     <- '}'

@@ -1,5 +1,12 @@
 // filepath: .vscode/settings.json
 {
+  "code-runner.fileDirectoryAsCwd": true,
+  "code-runner.ignoreSelection": true,
+  "code-runner.saveFileBeforeRun": true,
+  "code-runner.executorMapByGlob": {
+    "grammar.peg": "peg --strict --inline --output ../parser.go $fileName",
+  },
+
   "go.buildFlags": [
     "-v",
     "-tags=pprof",

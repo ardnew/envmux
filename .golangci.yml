@@ -19,11 +19,11 @@ linters:
       - common-false-positives
       - legacy
     rules:
-      - path: config/parse/model.go
+      - path: spec/parse/model.go
         text: bad syntax for struct tag pair
         linters:
           - govet
-      - path: config/parse/internal/lexer/main.go
+      - path: spec/parse/internal/lexer/main.go
         linters:
           - mnd
 
