@@ -1,6 +1,6 @@
-// Package vars provides definitions for environment variables derived from
+// Package builtin provides definitions for environment variables derived from
 // the process environment and other system information.
-package vars
+package builtin
 
 import (
 	"context"
@@ -15,8 +15,7 @@ import (
 
 	"github.com/expr-lang/expr"
 
-	"github.com/ardnew/envmux/pkg/cstr"
-	"github.com/ardnew/envmux/pkg/fn"
+	"github.com/ardnew/envmux/pkg"
 )
 
 // Env maps identifiers to objects for evaluating expressions.
@@ -32,7 +31,7 @@ var ParameterKey = `_` //nolint:gochecknoglobals
 //
 // Additionally, the evaluation loop requires a non-empty parameter list to
 // function correctly. NoParameter is added to empty parameter lists.
-var NoParameter any = nil //nolint:gochecknoglobals
+var NoParameter any //nolint:gochecknoglobals
 
 // Private singleton cache.
 //
@@ -116,12 +115,12 @@ func CacheCoerceConst() []expr.Option {
 // automatically.
 const ContextKey = `ctx`
 
-// WithContext is a functional [fn.Option] that installs the [context.Context]
+// WithContext is a functional [pkg.Option] that installs the [context.Context]
 // used when evaluating expressions.
 //
 // The environment is lazy-loaded via [Cache] if it is uninitialized.
 // If the context is nil, then [ContextKey] is removed from the environment.
-func WithContext(ctx context.Context) fn.Option[Env[any]] {
+func WithContext(ctx context.Context) pkg.Option[Env[any]] {
 	return func(v Env[any]) Env[any] {
 		if v.IsZero() {
 			v = Cache() // lazy-initialize the cache
@@ -137,7 +136,7 @@ func WithContext(ctx context.Context) fn.Option[Env[any]] {
 	}
 }
 
-func WithParameter(val any) fn.Option[Env[any]] {
+func WithParameter(val any) pkg.Option[Env[any]] {
 	return func(v Env[any]) Env[any] {
 		if v.IsZero() {
 			v = Cache() // lazy-initialize the cache
@@ -153,7 +152,7 @@ func WithParameter(val any) fn.Option[Env[any]] {
 	}
 }
 
-func WithExports(env ...map[string]any) fn.Option[Env[any]] {
+func WithExports(env ...map[string]any) pkg.Option[Env[any]] {
 	add := map[string]any{}
 
 	for _, e := range env {
@@ -173,7 +172,7 @@ func WithExports(env ...map[string]any) fn.Option[Env[any]] {
 	}
 }
 
-func WithEach(seq iter.Seq2[string, any]) fn.Option[Env[any]] {
+func WithEach(seq iter.Seq2[string, any]) pkg.Option[Env[any]] {
 	return func(v Env[any]) Env[any] {
 		if v.IsZero() {
 			v = Cache() // lazy-initialize the cache
@@ -244,7 +243,7 @@ func format(value any) string {
 		return strconv.Quote(v)
 
 	case []byte:
-		if str, ok := cstr.ParseASCII(v); ok {
+		if str, ok := plaintext(v); ok {
 			return strconv.Quote(str)
 		}
 
@@ -263,6 +262,41 @@ func format(value any) string {
 	default:
 		return fmt.Sprintf("%+v", v)
 	}
+}
+
+// Plaintext ensures the given byte slice contains nothing or a sequence
+// of "plaintext" ASCII characters, which may optionally contain a
+// terminating null byte ('\0'), and returns that sequence as a string
+// without the terminating null byte.
+//
+// The "plaintext" ASCII characters are defined as:
+//
+//   - ASCII characters in the range 0x20 to 0x7E (inclusive)
+//   - 0x09 '\t' (TAB)
+//   - 0x0A '\n' (LF)
+//   - 0x0D '\r' (CR)
+//
+// The empty byte slice satisfies these conditions and returns an empty string.
+func plaintext(b []byte) (string, bool) {
+	if len(b) == 0 {
+		return "", true
+	}
+
+	n := len(b)
+
+	// Checking n > 1 ensures we do not have the single-null-byte slice {'\0'}.
+	// If n == 1, the condition in the loop below will then return false.
+	if n > 1 && b[n-1] == 0 {
+		n-- // Exclude the terminating null byte.
+	}
+
+	for _, r := range b[:n] {
+		if (r < 0x20 || 0x7F <= r) && r != '\t' && r != '\n' && r != '\r' {
+			return "", false
+		}
+	}
+
+	return string(b[:n]), true
 }
 
 // IsZero returns whether the receiver is nil or empty.

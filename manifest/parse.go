@@ -1,4 +1,4 @@
-package env
+package manifest
 
 import (
 	"go/constant"
@@ -10,11 +10,11 @@ import (
 
 	goast "go/ast"
 
-	"github.com/ardnew/envmux/spec/env/vars"
+	"github.com/ardnew/envmux/manifest/builtin"
 )
 
 type parameterType struct {
-	vars.Env[any]
+	builtin.Env[any]
 }
 
 // Visit implements the ast.Visitor interface and replaces all identifier nodes
@@ -39,12 +39,12 @@ func (p parameterType) Visit(n *ast.Node) {
 		ok  bool
 	)
 
-	if val, ok = p.Env[vars.ParameterKey]; !ok {
+	if val, ok = p.Env[builtin.ParameterKey]; !ok {
 		return // no parameter key defined
 	}
 
 	if id, ok = (*n).(*ast.IdentifierNode); !ok ||
-		id.Value != vars.ParameterKey {
+		id.Value != builtin.ParameterKey {
 		return
 	}
 

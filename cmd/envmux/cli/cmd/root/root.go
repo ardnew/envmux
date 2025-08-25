@@ -13,12 +13,10 @@ import (
 	"github.com/ardnew/envmux/cmd/envmux/cli/cmd"
 	"github.com/ardnew/envmux/cmd/envmux/cli/cmd/root/fs"
 	"github.com/ardnew/envmux/cmd/envmux/cli/cmd/root/ns"
+	"github.com/ardnew/envmux/cmd/envmux/prof"
+	"github.com/ardnew/envmux/manifest"
+	"github.com/ardnew/envmux/manifest/config"
 	"github.com/ardnew/envmux/pkg"
-	"github.com/ardnew/envmux/pkg/errs"
-	"github.com/ardnew/envmux/pkg/fn"
-	"github.com/ardnew/envmux/pkg/prof"
-	"github.com/ardnew/envmux/pkg/run"
-	"github.com/ardnew/envmux/spec/env"
 )
 
 var _ = cmd.Node(Node{}) //nolint:exhaustruct
@@ -42,14 +40,14 @@ var (
 		NoPlaceholder: true,
 		NoDefault:     true,
 	}
-	verboseFlag = ff.FlagConfig{
+	verboseLevelFlag = ff.FlagConfig{
 		ShortName:     'v',
 		LongName:      `verbose`,
 		Usage:         `enable verbose output`,
 		NoPlaceholder: true,
 		NoDefault:     true,
 	}
-	reqDefFlag = ff.FlagConfig{
+	definitionRequiredFlag = ff.FlagConfig{
 		ShortName:     'u',
 		LongName:      `require-definitions`,
 		Usage:         `treat undefined namespaces as errors`,
@@ -72,7 +70,7 @@ var (
 		NoPlaceholder: false,
 		NoDefault:     false,
 	}
-	configFlag = ff.FlagConfig{
+	configurationPathFlag = ff.FlagConfig{
 		ShortName:     'c',
 		LongName:      cmd.ConfigFlag,
 		Usage:         `config file containing default command-line flags with options`,
@@ -80,7 +78,7 @@ var (
 		NoPlaceholder: false,
 		NoDefault:     false,
 	}
-	manifestFlag = ff.FlagConfig{
+	manifestPathFlag = ff.FlagConfig{
 		ShortName:     'm',
 		LongName:      `manifest`,
 		Usage:         `manifest file containing namespace definitions ("-" is stdin)`,
@@ -88,7 +86,7 @@ var (
 		NoPlaceholder: false,
 		NoDefault:     false,
 	}
-	definesFlag = ff.FlagConfig{
+	inlineDefinitionFlag = ff.FlagConfig{
 		ShortName:     'd',
 		LongName:      `define`,
 		Usage:         `inline namespace definitions to append to manifest`,
@@ -96,7 +94,7 @@ var (
 		NoPlaceholder: false,
 		NoDefault:     false,
 	}
-	ignoreDefaultFlag = ff.FlagConfig{
+	noDefaultDefinitionFlag = ff.FlagConfig{
 		ShortName:     'i',
 		LongName:      `ignore-default`,
 		Usage:         `ignore default manifest file`,
@@ -119,58 +117,84 @@ var (
 type Node struct {
 	cmd.Config
 
-	Version  bool
-	Verbose  bool
-	ReqDef   bool
-	MaxJobs  int
-	BufSize  int
-	ConfPath []string
-	Manifest []string
-	Defines  []string
-	IgnDef   bool
-	Profile  []string
+	Version              bool
+	Verbose              bool
+	NoDefaultDefinition  bool
+	IsDefinitionRequired bool
+	ParallelLimit        int
+	ConfigurationPath    []string
+	ManifestPath         []string
+	InlineDefinition     []string
+	Profile              []string
 
 	verboseLevel int
 }
 
 func (r Node) Init(args ...any) cmd.Node { //nolint:ireturn
 	r = Node{ //nolint:exhaustruct
-		Version:  false,
-		Verbose:  false,
-		ReqDef:   false,
-		MaxJobs:  runtime.NumCPU(),
-		BufSize:  1 << 15, //nolint:mnd // 32 KiB
-		ConfPath: []string{filepath.Join(run.ConfigDir(ID), configFlag.LongName)},
+		Version:              false,
+		Verbose:              false,
+		IsDefinitionRequired: false,
+		ParallelLimit:        runtime.NumCPU(),
+		ConfigurationPath: []string{
+			filepath.Join(config.Dir(ID), configurationPathFlag.LongName),
+		},
 	}
 
 	flags := []ff.FlagConfig{
-		fn.Wrap(versionFlag, cmd.WithFlagConfig(&r.Version)),
-		fn.Wrap(verboseFlag, cmd.WithIncFlagConfig(&r.Verbose, &r.verboseLevel)),
-		fn.Wrap(reqDefFlag, cmd.WithFlagConfig(&r.ReqDef)),
-		fn.Wrap(parallelLimitFlag, cmd.WithFlagConfig(&r.MaxJobs)),
-		fn.Wrap(bufferSizeFlag, cmd.WithFlagConfig(&r.BufSize)),
-		fn.Wrap(configFlag, cmd.WithRepFlagConfig(&r.ConfPath)),
-		fn.Wrap(manifestFlag, cmd.WithRepFlagConfig(&r.Manifest)),
-		fn.Wrap(definesFlag, cmd.WithRepFlagConfig(&r.Defines)),
-		fn.Wrap(ignoreDefaultFlag, cmd.WithFlagConfig(&r.IgnDef)),
+		pkg.Wrap(
+			versionFlag,
+			cmd.WithFlagConfig(&r.Version),
+		),
+		pkg.Wrap(
+			verboseLevelFlag,
+			cmd.WithIncFlagConfig(&r.Verbose, &r.verboseLevel),
+		),
+		pkg.Wrap(
+			noDefaultDefinitionFlag,
+			cmd.WithFlagConfig(&r.NoDefaultDefinition),
+		),
+		pkg.Wrap(
+			definitionRequiredFlag,
+			cmd.WithFlagConfig(&r.IsDefinitionRequired),
+		),
+		pkg.Wrap(
+			parallelLimitFlag,
+			cmd.WithFlagConfig(&r.ParallelLimit),
+		),
+		pkg.Wrap(
+			configurationPathFlag,
+			cmd.WithRepFlagConfig(&r.ConfigurationPath),
+		),
+		pkg.Wrap(
+			manifestPathFlag,
+			cmd.WithRepFlagConfig(&r.ManifestPath),
+		),
+		pkg.Wrap(
+			inlineDefinitionFlag,
+			cmd.WithRepFlagConfig(&r.InlineDefinition),
+		),
 	}
 
 	// If compiled with build tag pprof, add profiling flags.
 	if len(prof.Modes()) > 0 {
 		flags = append(
 			flags,
-			fn.Wrap(profileFlag, cmd.WithRepFlagConfig(&r.Profile)),
+			pkg.Wrap(
+				profileFlag,
+				cmd.WithRepFlagConfig(&r.Profile),
+			),
 		)
 	}
 
 	// This must be postponed until after the command-line is parsed.
-	defaultManifest := []string{filepath.Join(run.ConfigDir(ID), `default`)}
+	defaultManifest := []string{filepath.Join(config.Dir(ID), `default`)}
 
-	r.Config = fn.Wrap(
+	r.Config = pkg.Wrap(
 		r.Config,
 		cmd.WithUsage(
 			cmd.Usage{
-				Name:      run.ConfigPrefix(ID),
+				Name:      config.Prefix(ID),
 				Syntax:    syntax,
 				ShortHelp: shortHelp,
 				LongHelp:  longHelp,
@@ -192,40 +216,40 @@ func (r Node) Init(args ...any) cmd.Node { //nolint:ireturn
 
 				// Only set the default manifest file
 				// if flag --ignore-default is unset.
-				if !r.IgnDef {
-					r.Manifest = append(r.Manifest, defaultManifest...)
+				if !r.NoDefaultDefinition {
+					r.ManifestPath = append(r.ManifestPath, defaultManifest...)
 				}
 
 				var (
-					mod env.Model
+					man manifest.Model
 					err error
 				)
 
-				mod, err = env.Make(
+				man, err = manifest.Make(
 					ctx,
-					r.Manifest,
-					r.Defines,
-					env.WithMaxParallelJobs(r.MaxJobs),
-					env.WithEvalRequiresDef(r.ReqDef),
+					r.ManifestPath,
+					r.InlineDefinition,
+					manifest.WithMaxParallelJobs(r.ParallelLimit),
+					manifest.WithEvalRequiresDef(r.IsDefinitionRequired),
 				)
 				if err != nil {
-					return fmt.Errorf("%w: %w", errs.ErrInvalidDefinitions, err)
+					return fmt.Errorf("%w: %w", pkg.ErrInvalidDefinitions, err)
 				}
 
-				mod, err = mod.Parse()
+				man, err = man.Parse()
 				if err != nil {
-					return errs.IncompleteParseError{
-						Err: err, Def: r.Manifest, Lvl: r.VerboseLevel(),
+					return pkg.IncompleteParseError{
+						Err: err, Def: r.ManifestPath, Lvl: r.VerboseLevel(),
 					}
 				}
 
 				if len(args) == 0 {
-					args = run.Namespace()
+					args = config.DefaultNamespace()
 				}
 
-				env, err := mod.Eval(ctx, args...)
+				env, err := man.Eval(ctx, args...)
 				if err != nil {
-					return fmt.Errorf("%w: %w", errs.ErrIncompleteEval, err)
+					return fmt.Errorf("%w: %w", pkg.ErrIncompleteEval, err)
 				}
 
 				for _, v := range env.Environ() {

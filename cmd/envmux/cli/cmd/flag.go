@@ -4,10 +4,9 @@ import (
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffval"
 
+	"github.com/ardnew/envmux/cmd/envmux/cli/shell"
+	"github.com/ardnew/envmux/manifest/config"
 	"github.com/ardnew/envmux/pkg"
-	"github.com/ardnew/envmux/pkg/ev"
-	"github.com/ardnew/envmux/pkg/fn"
-	"github.com/ardnew/envmux/pkg/run"
 )
 
 //nolint:gochecknoglobals
@@ -24,13 +23,13 @@ var (
 			ff.WithConfigFileFlag(ConfigFlag),
 			ff.WithConfigFileParser(ff.PlainParser),
 			ff.WithConfigAllowMissingFile(),
-			ff.WithEnvVarPrefix(ev.FormatEnvVar(run.ConfigPrefix(pkg.Name))),
+			ff.WithEnvVarPrefix(shell.MakeIdent(config.Prefix(pkg.Name))),
 			// ff.WithEnvIgnoreShortVarNames(),
 		}
 	}
 )
 
-func WithFlagConfig[T ffval.ValueType](ptr *T) fn.Option[ff.FlagConfig] {
+func WithFlagConfig[T ffval.ValueType](ptr *T) pkg.Option[ff.FlagConfig] {
 	return func(cfg ff.FlagConfig) ff.FlagConfig {
 		cfg.Value = ffval.NewValueDefault(ptr, *ptr)
 
@@ -43,7 +42,7 @@ func WithFlagConfig[T ffval.ValueType](ptr *T) fn.Option[ff.FlagConfig] {
 func WithIncFlagConfig[T ffval.ValueType](
 	ptr *T,
 	counter *int,
-) fn.Option[ff.FlagConfig] {
+) pkg.Option[ff.FlagConfig] {
 	return func(cfg ff.FlagConfig) ff.FlagConfig {
 		val := ffval.NewValueDefault(ptr, *ptr)
 
@@ -68,7 +67,7 @@ func WithIncFlagConfig[T ffval.ValueType](
 
 func WithRepFlagConfig[T ffval.ValueType](
 	slice *[]T,
-) fn.Option[ff.FlagConfig] {
+) pkg.Option[ff.FlagConfig] {
 	return func(cfg ff.FlagConfig) ff.FlagConfig {
 		ptr := new(T)
 		val := ffval.NewValue(ptr)

@@ -2,30 +2,43 @@ package main
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"os"
 
 	"github.com/ardnew/envmux/cmd/envmux/cli"
+	"github.com/ardnew/envmux/pkg/log"
 )
 
 // main is the entry point for the envmux application.
 func main() {
-	var result cli.RunError
+	ctx, cancel := context.WithCancelCause(context.Background())
+	ctx = log.Make().AddToContext(ctx)
 
-	ctx := context.Background()
-	defer exit(ctx, &result)
+	cancel(cli.Run(ctx))
 
-	result = cli.Run(ctx)
-
-	if result.Help != "" {
-		println(result.Help)
-	}
-
-	if result.Err != nil {
-		println("error:", result.Err.Error())
-	}
+	exit(ctx)
 }
 
-func exit(ctx context.Context, runErr *cli.RunError) {
-	ctx.Done()
-	os.Exit(runErr.Code)
+func exit(ctx context.Context) {
+	<-ctx.Done()
+
+	var runErr cli.RunError
+	if errors.As(context.Cause(ctx), &runErr) {
+		switch {
+		case runErr.Help != "":
+			println(runErr.Help)
+
+		case runErr.Err != nil:
+			if jot, ok := log.FromContext(ctx); ok {
+				jot.LogAttrs(ctx, slog.LevelError, "unhandled error",
+					slog.Attr{Key: "error", Value: slog.StringValue(runErr.Err.Error())},
+				)
+			}
+		}
+
+		os.Exit(runErr.Code)
+	}
+
+	os.Exit(-1)
 }

@@ -1,10 +1,10 @@
-package ev
+package shell
 
 import (
 	"errors"
 	"testing"
 
-	"github.com/ardnew/envmux/pkg/errs"
+	"github.com/ardnew/envmux/pkg"
 )
 
 func TestFormatEnvVar(t *testing.T) {
@@ -38,11 +38,11 @@ func TestFormatEnvVar(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		result := FormatEnvVar(test.input...)
+		result := MakeIdent(test.input...)
 		if result != test.expected {
 			t.Errorf("FormatEnvVar(%v) = %v; want %v", test.input, result, test.expected)
 		}
-		failsafe := EnvVarOption{}.FormatEnvVar(test.input...)
+		failsafe := IdentFormat{}.makeIdent(test.input...)
 		if failsafe != test.expected {
 			t.Errorf("FormatEnvVar(%v) = %v; want %v", test.input, failsafe, test.expected)
 		}
@@ -51,14 +51,14 @@ func TestFormatEnvVar(t *testing.T) {
 	var validPanic bool
 	defer func(valid *bool) {
 		if r := recover(); r != nil {
-			if err, ok := r.(error); ok && errors.Is(err, errs.ErrInvalidEnvVar) {
+			if err, ok := r.(error); ok && errors.Is(err, pkg.ErrInvalidEnvVar) {
 				*valid = true
 			}
 		}
 	}(&validPanic)
 
-	DefaultEnvVarOption = EnvVarOption{}
-	FormatEnvVar("foo")
+	DefaultIdentFormat = IdentFormat{}
+	MakeIdent("foo")
 
 	if !validPanic {
 		t.Errorf("FormatEnvVar: expected panic with ErrInvalidEnvVar")

@@ -9,6 +9,7 @@ import (
 
 	"github.com/pkg/profile"
 
+	"github.com/ardnew/envmux/pkg"
 	"github.com/ardnew/envmux/pkg/fn"
 )
 
@@ -43,7 +44,7 @@ type control struct {
 }
 
 func (c control) start(args ...string) interface{ Stop() } {
-	opt := []fn.Option[control]{}
+	opt := []pkg.Option[control]{}
 	arg := []string{}
 
 	for _, p := range args {
@@ -54,7 +55,7 @@ func (c control) start(args ...string) interface{ Stop() } {
 		}
 	}
 
-	c = fn.Wrap(c, append(opt, withhMode(arg...))...)
+	c = pkg.Wrap(c, append(opt, withhMode(arg...))...)
 
 	if c.path != "" {
 		c.mode = append(c.mode, profile.ProfilePath(c.path))
@@ -67,7 +68,7 @@ func (c control) start(args ...string) interface{ Stop() } {
 	return profile.Start(c.mode...)
 }
 
-func withhMode(modes ...string) fn.Option[control] {
+func withhMode(modes ...string) pkg.Option[control] {
 	return func(c control) control {
 		seen := fn.Unique[string]{}
 
@@ -85,7 +86,7 @@ func withhMode(modes ...string) fn.Option[control] {
 	}
 }
 
-func withhPath(path string) fn.Option[control] {
+func withhPath(path string) pkg.Option[control] {
 	return func(c control) control {
 		c.path += path
 		return c

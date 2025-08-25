@@ -1,18 +1,20 @@
-package vars
+package builtin
 
 import (
 	"bufio"
 	"os"
 	"os/user"
 	"strings"
+
+	"github.com/ardnew/envmux/manifest/builtin/runtime"
 )
 
-func getTarget() Target {
-	return GetTarget()
+func getTarget() runtime.Target {
+	return runtime.GetTarget()
 }
 
-func getPlatform() Target {
-	return GetPlatform()
+func getPlatform() runtime.Target {
+	return runtime.GetPlatform()
 }
 
 func getHostname() string {

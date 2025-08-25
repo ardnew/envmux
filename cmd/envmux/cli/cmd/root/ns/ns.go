@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/ardnew/envmux/cmd/envmux/cli/cmd"
-	"github.com/ardnew/envmux/pkg/fn"
+	"github.com/ardnew/envmux/pkg"
 )
 
 var _ = cmd.Node(Node{}) //nolint:exhaustruct
@@ -27,7 +27,7 @@ type Node struct {
 }
 
 func (n Node) Init(...any) cmd.Node { //nolint:ireturn
-	n.Config = fn.Wrap(
+	n.Config = pkg.Wrap(
 		n.Config,
 		cmd.WithUsage(
 			cmd.Usage{

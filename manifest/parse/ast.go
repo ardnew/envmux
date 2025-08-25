@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/ardnew/envmux/pkg/fn"
+	"github.com/ardnew/envmux/pkg"
 )
 
 type Token uint32
@@ -47,7 +47,7 @@ func New() *AST {
 	}
 }
 
-func WithBufSize(bufSize int) fn.Option[AST] {
+func WithBufSize(bufSize int) pkg.Option[AST] {
 	if bufSize < TokenSize {
 		bufSize = DefaultBufSize // Sanity barrier.
 	} else if bufSize%TokenSize != 0 {
@@ -61,7 +61,7 @@ func WithBufSize(bufSize int) fn.Option[AST] {
 	}
 }
 
-func WithPretty(pretty bool) fn.Option[AST] {
+func WithPretty(pretty bool) pkg.Option[AST] {
 	return func(a AST) AST {
 		a.pretty = pretty
 

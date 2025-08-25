@@ -7,14 +7,13 @@ import (
 
 	"github.com/peterbourgon/ff/v4"
 
-	"github.com/ardnew/envmux/pkg/errs"
-	"github.com/ardnew/envmux/pkg/fn"
+	"github.com/ardnew/envmux/pkg"
 )
 
 type Node interface {
 	Command() *ff.Command
 	FlagSet() *ff.FlagSet
-	Init(...any) Node
+	Init(args ...any) Node
 }
 
 type Usage struct {
@@ -34,7 +33,7 @@ type Config struct {
 func (c Config) Command() *ff.Command { return c.cmd }
 func (c Config) FlagSet() *ff.FlagSet { return c.set }
 
-func WithUsage(usage Usage, exec Exec) fn.Option[Config] {
+func WithUsage(usage Usage, exec Exec) pkg.Option[Config] {
 	return func(c Config) Config {
 		c.set = ff.NewFlagSet(usage.Name)
 
@@ -52,7 +51,7 @@ func WithUsage(usage Usage, exec Exec) fn.Option[Config] {
 	}
 }
 
-func WithFlags(cfgs ...ff.FlagConfig) fn.Option[Config] {
+func WithFlags(cfgs ...ff.FlagConfig) pkg.Option[Config] {
 	return func(c Config) Config {
 		err := Validate(c.Command(), c.FlagSet())
 		if err != nil {
@@ -71,7 +70,7 @@ func WithFlags(cfgs ...ff.FlagConfig) fn.Option[Config] {
 	}
 }
 
-func WithSubcommands(subs ...Node) fn.Option[Config] {
+func WithSubcommands(subs ...Node) pkg.Option[Config] {
 	return func(c Config) Config {
 		err := Validate(c.Command(), c.FlagSet())
 		if err != nil {
@@ -95,16 +94,16 @@ func WithSubcommands(subs ...Node) fn.Option[Config] {
 func Validate(cmd *ff.Command, set ff.Flags) (err error) {
 	switch {
 	case cmd == nil, cmd.Exec == nil:
-		return errs.ErrInvalidCommand
+		return pkg.ErrInvalidCommand
 
 	case set == nil, cmd.Flags == nil:
-		return errs.ErrInvalidFlagSet
+		return pkg.ErrInvalidFlagSet
 
 	case cmd.Name == "",
 		cmd.Usage == "",
 		cmd.ShortHelp == "",
 		cmd.LongHelp == "":
-		return errs.ErrInvalidInterface
+		return pkg.ErrInvalidInterface
 
 	default:
 		return nil

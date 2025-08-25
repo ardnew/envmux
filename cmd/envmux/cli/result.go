@@ -7,7 +7,7 @@ import (
 	"github.com/peterbourgon/ff/v4/ffhelp"
 
 	"github.com/ardnew/envmux/cmd/envmux/cli/cmd"
-	"github.com/ardnew/envmux/pkg/fn"
+	"github.com/ardnew/envmux/pkg"
 )
 
 // RunError represents the result of executing a command.
@@ -29,7 +29,7 @@ func (r RunError) Error() string {
 }
 
 // resultErr sets the error and code for the Result.
-func resultErr(err error, code int) fn.Option[RunError] {
+func resultErr(err error, code int) pkg.Option[RunError] {
 	return func(r RunError) RunError {
 		r.Err = err
 		r.Code = code
@@ -39,7 +39,7 @@ func resultErr(err error, code int) fn.Option[RunError] {
 }
 
 // resultHelp sets the help message for the Result.
-func resultHelp(help string) fn.Option[RunError] {
+func resultHelp(help string) pkg.Option[RunError] {
 	return func(r RunError) RunError {
 		r.Help = help
 
@@ -55,10 +55,10 @@ func MakeResult(node cmd.Node, err error) RunError {
 	case err == nil:
 		return ErrRunOK
 	case errors.Is(err, ff.ErrHelp):
-		return fn.Make(resultUsage)
+		return pkg.Make(resultUsage)
 	case errors.Is(err, ff.ErrNoExec):
-		return fn.Make(resultUsage)
+		return pkg.Make(resultUsage)
 	default:
-		return fn.Make(resultErr(err, 1))
+		return pkg.Make(resultErr(err, 1))
 	}
 }

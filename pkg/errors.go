@@ -1,5 +1,5 @@
 // Package errs provides error types and helpers for envmux.
-package errs
+package pkg
 
 import (
 	"errors"
@@ -9,7 +9,7 @@ import (
 
 	"github.com/expr-lang/expr/file"
 
-	"github.com/ardnew/envmux/pkg/run"
+	"github.com/ardnew/envmux/manifest/config"
 )
 
 // Error represents an error with an embedded message.
@@ -112,16 +112,11 @@ func (e IncompleteParseError) Error() string {
 			continue // skip empty definitions
 		}
 
-		switch {
-		case s == run.StdinSpecPath:
-			def.WriteString("STDIN")
-		case strings.HasPrefix(s, run.InlineSpecPrefix):
-			s = strconv.Quote(strings.TrimPrefix(s, run.InlineSpecPrefix))
-
-			fallthrough
-		default:
-			def.WriteString(s)
+		if s == config.StdinManifestPath {
+			s = "STDIN"
 		}
+
+		def.WriteString(s)
 	}
 
 	ref := def.String()

@@ -2,27 +2,6 @@ package fn
 
 import "iter"
 
-// Option functions return their argument with modifications applied.
-type Option[T any] func(T) T
-
-// Make returns a new object of type T with the given options applied.
-//
-//nolint:ireturn
-func Make[T any](opts ...Option[T]) (t T) {
-	return Wrap(t, opts...)
-}
-
-// Wrap returns t after applying the given options.
-//
-//nolint:ireturn
-func Wrap[T any](t T, opts ...Option[T]) T {
-	for _, o := range opts {
-		t = o(t)
-	}
-
-	return t
-}
-
 // OK returns its first argument unchanged.
 //
 // It is useful when composing a function expecting an argument of type T
@@ -72,7 +51,7 @@ func Map[T, R any](s iter.Seq[T], f func(T) (R, bool)) iter.Seq[R] {
 // If s is nil, nil is returned.
 // If keep is nil, all elements are yielded.
 //
-// Filter is to slices as [FilterKeys] is to maps.
+// See [FilterItems] for the analogue that operates on slices.
 func Filter[T any](s iter.Seq[T], keep func(T) bool) iter.Seq[T] {
 	if s == nil {
 		return nil
@@ -91,6 +70,12 @@ func Filter[T any](s iter.Seq[T], keep func(T) bool) iter.Seq[T] {
 	}
 }
 
+// FilterItems returns a sequence that yields in-order elements of s
+// that satisfy the predicate keep.
+// If s is nil, nil is returned.
+// If keep is nil, all elements are yielded.
+//
+// See [Filter] for the analogue that operates on sequences.
 func FilterItems[T any](s []T, keep func(T) bool) iter.Seq[T] {
 	if s == nil {
 		return nil
@@ -113,8 +98,6 @@ func FilterItems[T any](s []T, keep func(T) bool) iter.Seq[T] {
 // for which the key satisfies the predicate keep.
 // If s is nil, nil is returned.
 // If keep is nil, all key-value pairs are yielded.
-//
-// FilterKeys is to maps as [Filter] is to slices.
 func FilterKeys[K comparable, V any](
 	s iter.Seq2[K, V],
 	keep func(K) bool,

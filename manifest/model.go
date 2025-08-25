@@ -1,6 +1,6 @@
-// Package env defines an environment model that can parse and evaluate
+// Package manifest defines an environment model that can parse and evaluate
 // namespaced variables defined with complex expressions.
-package env
+package manifest
 
 import (
 	"bufio"
@@ -18,12 +18,11 @@ import (
 	"github.com/carlmjohnson/flowmatic"
 	"github.com/expr-lang/expr"
 
+	"github.com/ardnew/envmux/manifest/builtin"
+	"github.com/ardnew/envmux/manifest/config"
+	"github.com/ardnew/envmux/manifest/parse"
 	"github.com/ardnew/envmux/pkg"
-	"github.com/ardnew/envmux/pkg/errs"
 	"github.com/ardnew/envmux/pkg/fn"
-	"github.com/ardnew/envmux/pkg/run"
-	"github.com/ardnew/envmux/spec/env/vars"
-	"github.com/ardnew/envmux/spec/parse"
 )
 
 // Model evaluates namespaced environment variables with expression support.
@@ -42,14 +41,14 @@ type Model struct {
 }
 
 type parameterEnv struct {
-	eval vars.Env[any]
+	eval builtin.Env[any]
 	pars []any
 }
 
 func (m Model) String() string {
 	e, err := json.Marshal(m)
 	if err != nil {
-		return errs.JoinErrors(errs.ErrInvalidJSON, err).Error()
+		return pkg.JoinErrors(pkg.ErrInvalidJSON, err).Error()
 	}
 
 	return string(e)
@@ -65,12 +64,12 @@ func (m Model) Parse() (Model, error) {
 		return Model{}, err
 	}
 
-	return fn.Wrap(m, WithAST(ast)), nil
+	return pkg.Wrap(m, WithAST(ast)), nil
 }
 
 func (m Model) Eval(
 	ctx context.Context, namespaces ...string,
-) (vars.Env[any], error) {
+) (builtin.Env[any], error) {
 	s := slices.Collect(fn.Filter(slices.Values(namespaces),
 		func(ns string) bool { return ns != "" },
 	))
@@ -100,7 +99,7 @@ func (m Model) eval(
 	maxJobs = min(m.MaxParallelJobs, maxJobs)
 
 	env := parameterEnv{
-		eval: vars.Env[any]{},
+		eval: builtin.Env[any]{},
 		pars: []any{},
 	}
 
@@ -113,7 +112,7 @@ func (m Model) eval(
 				return parameterEnv{}, err
 			}
 
-			env = fn.Wrap(env, export(e))
+			env = pkg.Wrap(env, export(e))
 		}
 	} else {
 		// Evaluate all namespaces in parallel,
@@ -124,7 +123,7 @@ func (m Model) eval(
 				return parameterEnv{}, err
 			}
 
-			env = fn.Wrap(env, export(envs...))
+			env = pkg.Wrap(env, export(envs...))
 		}
 	}
 
@@ -161,7 +160,7 @@ func (m Model) evalComposition(
 		if m.EvalRequiresDef {
 			return parameterEnv{}, fmt.Errorf(
 				"%w: %q is undefined",
-				errs.ErrInvalidNamespace,
+				pkg.ErrInvalidNamespace,
 				composite,
 			)
 		}
@@ -202,7 +201,7 @@ func (m Model) evalComposition(
 	}
 
 	env := parameterEnv{
-		eval: vars.Env[any]{},
+		eval: builtin.Env[any]{},
 		pars: []any{},
 	}
 
@@ -225,16 +224,16 @@ func (m Model) evalComposition(
 	)
 
 	if len(evalParams) == 0 {
-		evalParams = append(evalParams, vars.NoParameter)
+		evalParams = append(evalParams, builtin.NoParameter)
 	}
 
 	for _, par := range evalParams {
-		e := fn.Make(
-			vars.WithContext(ctx),
+		e := pkg.Make(
+			builtin.WithContext(ctx),
 			// Calling [vars.WithParameter] when par == [vars.NoParameter] causes
 			// [vars.ParameterKey] to be removed from the environment.
-			vars.WithParameter(par),
-			vars.WithExports(env.eval),
+			builtin.WithParameter(par),
+			builtin.WithExports(env.eval),
 		)
 
 		// We have to pass the environment to both [expr.Compile] and [expr.Run].
@@ -242,18 +241,18 @@ func (m Model) evalComposition(
 		opt := []expr.Option{
 			expr.Env(e.AsMap()),
 			expr.Optimize(true),
-			expr.WithContext(vars.ContextKey),
+			expr.WithContext(builtin.ContextKey),
 			expr.AllowUndefinedVariables(),
 			expr.Patch(parameterType{Env: e}),
 		}
 
-		opt = append(opt, vars.CacheCoerceConst()...)
+		opt = append(opt, builtin.CacheCoerceConst()...)
 
 		// Evaluate mappings
 		for _, sta := range def.Statements {
 			program, err := expr.Compile(sta.Expression.Src, opt...)
 			if err != nil {
-				return parameterEnv{}, errs.ExpressionError{
+				return parameterEnv{}, pkg.ExpressionError{
 					Namespace: def.Ident, Statement: sta.Ident, Err: err,
 				}
 			}
@@ -275,7 +274,7 @@ func (m Model) evalComposition(
 func Make(
 	_ context.Context,
 	manifests, defines []string,
-	opts ...fn.Option[Model],
+	opts ...pkg.Option[Model],
 ) (Model, error) {
 	manifest := make([]io.Reader, 0, len(manifests))
 
@@ -305,16 +304,16 @@ func Make(
 		manifest = append(manifest, r)
 	}
 
-	return fn.Make(
+	return pkg.Make(
 		append(opts, WithManifestReader(io.MultiReader(manifest...)))...), nil
 }
 
-// WithAST is a functional [fn.Option] that installs the manifest
+// WithAST is a functional [pkg.Option] that installs the manifest
 // parsed from a [parse.AST].
 //
 // It is a required option that must be applied prior to evaluating
 // environment variables with [Model.Eval].
-func WithAST(ast *parse.AST) fn.Option[Model] {
+func WithAST(ast *parse.AST) pkg.Option[Model] {
 	return func(m Model) Model {
 		m.AST = ast
 
@@ -322,12 +321,12 @@ func WithAST(ast *parse.AST) fn.Option[Model] {
 	}
 }
 
-// WithMaxParallelJobs is a functional [fn.Option] that sets the maximum
+// WithMaxParallelJobs is a functional [pkg.Option] that sets the maximum
 // number of parallel jobs to run when evaluating the environment.
 //
 // The default number of jobs is equal to the number of CPU cores available.
 // A value of 0 means to use the default number of jobs.
-func WithMaxParallelJobs(n int) fn.Option[Model] {
+func WithMaxParallelJobs(n int) pkg.Option[Model] {
 	return func(m Model) Model {
 		m.MaxParallelJobs = n
 
@@ -335,9 +334,9 @@ func WithMaxParallelJobs(n int) fn.Option[Model] {
 	}
 }
 
-// WithEvalRequiresDef is a functional [fn.Option] that sets whether the
+// WithEvalRequiresDef is a functional [pkg.Option] that sets whether the
 // model requires all namespaces to be defined for evaluation.
-func WithEvalRequiresDef(b bool) fn.Option[Model] {
+func WithEvalRequiresDef(b bool) pkg.Option[Model] {
 	return func(m Model) Model {
 		m.EvalRequiresDef = b
 
@@ -345,9 +344,9 @@ func WithEvalRequiresDef(b bool) fn.Option[Model] {
 	}
 }
 
-// WithManifestReader is a functional [fn.Option] that sets the reader used to
+// WithManifestReader is a functional [pkg.Option] that sets the reader used to
 // read all manifests combined.
-func WithManifestReader(r io.Reader) fn.Option[Model] {
+func WithManifestReader(r io.Reader) pkg.Option[Model] {
 	return func(m Model) Model {
 		m.ManifestReader = r
 
@@ -371,7 +370,7 @@ func manifestFromPath(path string) (io.Reader, error) {
 	//  2. If flag argument is a relative path, use the first existing:
 	//     a. relative to CWD
 	//     b. relative to the manifest directory
-	if path == run.StdinSpecPath {
+	if path == config.StdinManifestPath {
 		// Read from stdin
 		return os.Stdin, nil
 	}
@@ -395,7 +394,7 @@ func manifestFromPath(path string) (io.Reader, error) {
 	//           since path is now guaranteed to be absolute.
 	for r == nil && err == nil {
 		if r, err = readerFromFile(path); err != nil && !filepath.IsAbs(path) {
-			path, err = filepath.Abs(filepath.Join(run.ConfigDir(pkg.Name), path))
+			path, err = filepath.Abs(filepath.Join(config.Dir(pkg.Name), path))
 		}
 	}
 
@@ -407,17 +406,17 @@ func manifestFromString(def string) (io.Reader, error) {
 	return io.NopCloser(strings.NewReader(def)), nil
 }
 
-func collect(e vars.Env[any]) vars.Env[any] {
+func collect(e builtin.Env[any]) builtin.Env[any] {
 	return maps.Collect(
-		fn.FilterKeys(vars.Cache().Complement(e),
+		fn.FilterKeys(builtin.Cache().Complement(e),
 			func(key string) bool {
-				return key != vars.ContextKey && key != vars.ParameterKey
+				return key != builtin.ContextKey && key != builtin.ParameterKey
 			},
 		),
 	)
 }
 
-func export(sub ...parameterEnv) fn.Option[parameterEnv] {
+func export(sub ...parameterEnv) pkg.Option[parameterEnv] {
 	return func(env parameterEnv) parameterEnv {
 		for _, e := range sub {
 			if e.eval == nil {

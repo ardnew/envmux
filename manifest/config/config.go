@@ -1,45 +1,13 @@
-package run
+package config
 
 import (
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"unicode/utf8"
 )
 
-const InputSpecDelimiter = utf8.RuneSelf
-
-//nolint:gochecknoglobals
-var (
-
-	// InlineSpecPrefix is used as a prefix for command-line arguments to the
-	// `--nsconfig` flag to indicate that the definition(s) are provided inline
-	// from the argument itself and not read from a file.
-	//
-	// The flag can be used multiple times, but this prefix must be used for each
-	// instance that contains inline definitions. Both inline and file-based
-	// definitions can be mixed in the same command-line invocation.
-	InlineSpecPrefix = "="
-
-	// StdinSpecPath is the special path used to indicate that the namespace
-	// definitions should be read from standard input (stdin).
-	StdinSpecPath = "-"
-)
-
-// Manifest is the default file(s) containing namespace definitions.
-//
-//nolint:gochecknoglobals
-var Manifest = func(cmd string) []string {
-	return []string{filepath.Join(ConfigDir(cmd), "default")}
-}
-
-// Namespace is the default namespace(s) used for evaluation.
-//
-//nolint:gochecknoglobals
-var Namespace = func() []string { return []string{`default`} }
-
-// ConfigPrefix returns the base prefix string used to construct the path to the
+// Prefix returns the base prefix string used to construct the path to the
 // configuration directory and the prefix for environment variable identifiers.
 //
 // By default, the prefix is the base name of the executable file.
@@ -49,7 +17,7 @@ var Namespace = func() []string { return []string{`default`} }
 //   - "^\.+" (dot-prefixed names): remove the dot prefix
 //
 //nolint:gochecknoglobals
-var ConfigPrefix = func(cmd string) string {
+var Prefix = func(cmd string) string {
 	id := os.Args[0]
 	if exe, err := os.Executable(); err == nil {
 		id = exe
@@ -67,9 +35,9 @@ var ConfigPrefix = func(cmd string) string {
 	return id
 }
 
-// ConfigDir returns the configuration directory path.
+// Dir returns the configuration directory path.
 //
-// The directory path is constructed by appending [ConfigPrefix]
+// The directory path is constructed by appending [Prefix]
 // to the user's default configuration directory.
 //
 // The user's default configuration directory is the first directory found
@@ -83,7 +51,7 @@ var ConfigPrefix = func(cmd string) string {
 // and `filepath.Join(".", ConfigPrefix())` is returned.
 //
 //nolint:gochecknoglobals
-var ConfigDir = func(cmd string) string {
+var Dir = func(cmd string) string {
 	root, ok := os.LookupEnv("XDG_CONFIG_HOME")
 	if !ok {
 		if root, ok = os.LookupEnv("HOME"); ok {
@@ -96,5 +64,23 @@ var ConfigDir = func(cmd string) string {
 		}
 	}
 
-	return filepath.Join(root, ConfigPrefix(cmd))
+	return filepath.Join(root, Prefix(cmd))
 }
+
+// StdinManifestPath is the special path used to indicate that the namespace
+// definitions should be read from standard input (stdin).
+//
+//nolint:gochecknoglobals
+var StdinManifestPath = "-"
+
+// DefaultManifestPath is the default file(s) containing namespace definitions.
+//
+//nolint:gochecknoglobals
+var DefaultManifestPath = func(cmd string) []string {
+	return []string{filepath.Join(Dir(cmd), "default")}
+}
+
+// DefaultNamespace is the default namespace(s) used for evaluation.
+//
+//nolint:gochecknoglobals
+var DefaultNamespace = func() []string { return []string{`default`} }

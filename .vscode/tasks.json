@@ -7,7 +7,7 @@
       "command": "go",
       "args": [
         "generate",
-        "./spec/parse/..."
+        "${workspaceFolder}/manifest/parse/grammar.go"
       ],
       "options": {
         "cwd": "${workspaceFolder}",
@@ -20,7 +20,7 @@
       "presentation": {
         "echo": true,
         "reveal": "never",
-        "revealProblems": "onProblem",
+        // "revealProblems": "onProblem",
         "focus": false,
         "panel": "shared",
         "showReuseMessage": false,
@@ -28,6 +28,9 @@
         "close": true,
       },
       "isBackground": false,
+      "problemMatcher": [
+        "$go"
+      ]
     }
   ]
 }
