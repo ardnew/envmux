@@ -10,6 +10,7 @@
 
 *.pprof
 
+/notes.md
 /*.txt
 /*.svg
 
