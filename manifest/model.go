@@ -33,8 +33,8 @@ type Model struct {
 	// Maximum number of jobs that may be run simultaneously.
 	MaxParallelJobs int `json:"jobs,omitempty"`
 
-	// Whether the model requires all namespaces be defined for evaluation.
-	EvalRequiresDef bool `json:"requires,omitempty"`
+	// Whether the model treats undefined namespaces as errors.
+	StrictDefinitions bool `json:"requires,omitempty"`
 
 	// ManifestReader is the reader used to read all manifests combined.
 	ManifestReader io.Reader `json:"-"`
@@ -45,9 +45,25 @@ type parameterEnv struct {
 	pars []any
 }
 
+func export(sub ...parameterEnv) pkg.Option[parameterEnv] {
+	return func(env parameterEnv) parameterEnv {
+		return pkg.Wrap(
+			env,
+			func(t parameterEnv) parameterEnv {
+				for _, o := range sub {
+					maps.Copy(t.eval, o.eval)
+					t.pars = append(t.pars, o.pars...)
+				}
+
+				return t
+			},
+		)
+	}
+}
+
 func (m Model) String() string {
 	e, err := json.Marshal(m)
-	if err != nil {
+	if err == nil {
 		return pkg.JoinErrors(pkg.ErrInvalidJSON, err).Error()
 	}
 
@@ -157,12 +173,10 @@ func (m Model) evalComposition(
 	if idx < 0 {
 		// Throw an error if we have enabled the option that
 		// requires a definition for each namespace evaluated.
-		if m.EvalRequiresDef {
-			return parameterEnv{}, fmt.Errorf(
-				"%w: %q is undefined",
-				pkg.ErrInvalidNamespace,
-				composite,
-			)
+		if m.StrictDefinitions {
+			err := pkg.ErrUndefinedNamespace.WithDetail(composite.Ident)
+
+			return parameterEnv{}, err
 		}
 
 		// Otherwise, we silently ignore unknown namespaces.
@@ -321,12 +335,12 @@ func WithAST(ast *parse.AST) pkg.Option[Model] {
 	}
 }
 
-// WithMaxParallelJobs is a functional [pkg.Option] that sets the maximum
+// WithParallelEvalLimit is a functional [pkg.Option] that sets the maximum
 // number of parallel jobs to run when evaluating the environment.
 //
 // The default number of jobs is equal to the number of CPU cores available.
 // A value of 0 means to use the default number of jobs.
-func WithMaxParallelJobs(n int) pkg.Option[Model] {
+func WithParallelEvalLimit(n int) pkg.Option[Model] {
 	return func(m Model) Model {
 		m.MaxParallelJobs = n
 
@@ -334,11 +348,11 @@ func WithMaxParallelJobs(n int) pkg.Option[Model] {
 	}
 }
 
-// WithEvalRequiresDef is a functional [pkg.Option] that sets whether the
-// model requires all namespaces to be defined for evaluation.
-func WithEvalRequiresDef(b bool) pkg.Option[Model] {
+// WithStrictDefinitions is a functional [pkg.Option] that sets whether the
+// model treats undefined namespaces as errors.
+func WithStrictDefinitions(b bool) pkg.Option[Model] {
 	return func(m Model) Model {
-		m.EvalRequiresDef = b
+		m.StrictDefinitions = b
 
 		return m
 	}
@@ -414,19 +428,4 @@ func collect(e builtin.Env[any]) builtin.Env[any] {
 			},
 		),
 	)
-}
-
-func export(sub ...parameterEnv) pkg.Option[parameterEnv] {
-	return func(env parameterEnv) parameterEnv {
-		for _, e := range sub {
-			if e.eval == nil {
-				continue
-			}
-
-			maps.Copy(env.eval, e.eval)
-			env.pars = append(env.pars, e.pars...)
-		}
-
-		return env
-	}
 }

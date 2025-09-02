@@ -67,6 +67,22 @@ var Dir = func(cmd string) string {
 	return filepath.Join(root, Prefix(cmd))
 }
 
+var Cache = func(cmd string) string {
+	root, ok := os.LookupEnv("XDG_CACHE_HOME")
+	if !ok {
+		if root, ok = os.LookupEnv("HOME"); ok {
+			root = filepath.Join(root, ".cache")
+		} else {
+			var err error
+			if root, err = os.Getwd(); err != nil {
+				root = "."
+			}
+		}
+	}
+
+	return filepath.Join(root, Prefix(cmd))
+}
+
 // StdinManifestPath is the special path used to indicate that the namespace
 // definitions should be read from standard input (stdin).
 //

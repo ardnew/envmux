@@ -96,7 +96,7 @@ func CacheCoerceConst() []expr.Option {
 
 				keyStr, ok := keyVal.Interface().(string)
 				if !ok {
-					continue // skip non-string values
+					continue // skip non-string keys
 				}
 
 				opt = append(opt, expr.ConstExpr(name+"."+keyStr))

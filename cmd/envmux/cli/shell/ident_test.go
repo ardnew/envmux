@@ -51,7 +51,7 @@ func TestFormatEnvVar(t *testing.T) {
 	var validPanic bool
 	defer func(valid *bool) {
 		if r := recover(); r != nil {
-			if err, ok := r.(error); ok && errors.Is(err, pkg.ErrInvalidEnvVar) {
+			if err, ok := r.(error); ok && errors.Is(err, pkg.ErrInvalidIdentifier) {
 				*valid = true
 			}
 		}

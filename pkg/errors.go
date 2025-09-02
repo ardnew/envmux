@@ -4,35 +4,32 @@ package pkg
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/expr-lang/expr/file"
 
 	"github.com/ardnew/envmux/manifest/config"
+	"github.com/ardnew/envmux/pkg/fn"
 )
 
 // Error represents an error with an embedded message.
 type Error struct{ string }
 
+// JoinErrors returns a new error that concatenates the messages of the
+// non-nil errors in err with ": " as the separator.
+// If err is empty or contains only nil values, nil is returned.
 func JoinErrors(err ...error) error {
 	if len(err) == 0 {
 		return nil
 	}
 
-	var msg strings.Builder
+	return Error{strings.Join(fn.MapItems(err, getMessage), ": ")}
+}
 
-	for i, e := range err {
-		if e != nil {
-			if i > 0 {
-				msg.WriteString(": ")
-			}
-
-			msg.WriteString(e.Error())
-		}
-	}
-
-	return Error{msg.String()}
+// WithDetail returns a new error that wraps the receiver
+// and appends detail to its error message.
+func (e Error) WithDetail(str ...string) error {
+	return JoinErrors(append([]error{e}, fn.MapItems(str, putMessage)...)...)
 }
 
 // Error returns the error message.
@@ -45,30 +42,20 @@ func (e Error) Error() string {
 }
 
 var (
-	// ErrInvalidConfig indicates that the configuration is invalid.
-	ErrInvalidConfig = Error{"invalid configuration"}
+	// ErrUndefCommandExec indicates that the command exec function is undefined.
+	ErrUndefCommandExec = Error{"undefined exec function"}
+	// ErrUndefCommandFlagSet indicates that the command flag set is undefined.
+	ErrUndefCommandFlagSet = Error{"undefined flag set"}
+	// ErrUndefCommandUsage indicates that the command name or usage is undefined.
+	ErrUndefCommandUsage = Error{"undefined name or usage"}
 
-	// ErrInvalidCommand indicates that the command is invalid.
-	ErrInvalidCommand = Error{"invalid command"}
-	// ErrInvalidFlagSet indicates that the flag set is invalid.
-	ErrInvalidFlagSet = Error{"invalid flag set"}
-	// ErrInvalidInterface indicates that the interface is invalid.
-	ErrInvalidInterface = Error{"invalid interface"}
-	// ErrInvalidModel indicates that the model is invalid.
-	ErrInvalidModel = Error{"invalid model"}
+	// ErrInaccessibleManifest indicates that the manifest cannot be accessed.
+	ErrInaccessibleManifest = Error{"inaccessible manifest"}
+	// ErrUndefinedNamespace indicates that the namespace is undefined.
+	ErrUndefinedNamespace = Error{"undefined namespace"}
 
-	// ErrInvalidDefinitions indicates that the definitions file is invalid.
-	ErrInvalidDefinitions = Error{"invalid namespace definitions"}
-	// ErrInvalidNamespace indicates that the namespace is invalid.
-	ErrInvalidNamespace = Error{"invalid namespace"}
-	// ErrInvalidComposite indicates that the composite is invalid.
-	ErrInvalidComposite = Error{"invalid composite"}
-	// ErrInvalidParameter indicates that the parameter is invalid.
-	ErrInvalidParameter = Error{"invalid parameter"}
-	// ErrInvalidStatement indicates that the statement is invalid.
-	ErrInvalidStatement = Error{"invalid statement"}
-	// ErrInvalidEnvVar indicates that the environment is invalid.
-	ErrInvalidEnvVar = Error{"invalid environment variable"}
+	// ErrInvalidIdentifier indicates that the identifier is invalid.
+	ErrInvalidIdentifier = Error{"invalid identifier"}
 	// ErrInvalidExpression indicates that an expression is invalid.
 	ErrInvalidExpression = Error{"invalid expression"}
 
@@ -80,19 +67,29 @@ var (
 	// ErrIncompleteEval indicates that the evaluation is incomplete.
 	ErrIncompleteEval = Error{"incomplete evaluation"}
 
-	// ErrClosedStream indicates that the stream is closed.
-	ErrClosedStream = Error{"closed stream"}
-	// ErrUnacceptableStream indicates that the stream is unacceptable.
-	ErrUnacceptableStream = Error{"unacceptable stream"}
-
 	// ErrUnexpectedToken indicates that an unexpected token was encountered.
 	ErrUnexpectedToken = Error{"unexpected token"}
-
-	// ErrUnexpectedEOF indicates that an unexpected EOF was encountered.
-	ErrUnexpectedEOF = Error{"unexpected end of file"}
-	// ErrEOF indicates that the end of file was reached.
-	ErrEOF = Error{"end of file"}
 )
+
+// GetMessage returns the non-nil [error]'s non-empty [error.Error] and true.
+//
+// If err is nil or its error empty, the empty string and false are returned.
+func getMessage(err error) (string, bool) {
+	if err == nil {
+		return "", false
+	}
+
+	s := err.Error()
+
+	return s, s != ""
+}
+
+// PutMessage returns a new [Error] with the given non-empty error and true.
+//
+// If the error is empty, the [Error] zero value and false are returned.
+func putMessage(err string) (error, bool) { //nolint:revive
+	return Error{err}, err != ""
+}
 
 type IncompleteParseError struct {
 	Err error
@@ -121,11 +118,7 @@ func (e IncompleteParseError) Error() string {
 
 	ref := def.String()
 
-	var (
-		n *NamespaceError
-		x *ExpressionError
-		u *UnexpectedTokenError
-	)
+	var x *ExpressionError
 
 	var msg, pos string
 
@@ -136,20 +129,6 @@ func (e IncompleteParseError) Error() string {
 		}
 
 		msg = fmt.Sprintf("%s: %v", pos, x)
-
-	case errors.As(e.Err, &n):
-		if e.Lvl > 0 {
-			pos = fmt.Sprintf(" at %s%s", ref, n.position())
-		}
-
-		msg = fmt.Sprintf("%s: %v", pos, n)
-
-	case errors.As(e.Err, &u):
-		if e.Lvl > 0 {
-			pos = fmt.Sprintf(" at %s[%d:%d]", ref, u.Line, u.Column)
-		}
-
-		msg = fmt.Sprintf("%s: %v", pos, u)
 
 	case def.Len() > 0:
 		if e.Lvl > 0 {
@@ -163,34 +142,6 @@ func (e IncompleteParseError) Error() string {
 	}
 
 	return fmt.Sprintf("%v%s", ErrIncompleteParse, msg)
-}
-
-type NamespaceError struct {
-	ID  string
-	Err error
-}
-
-func (e NamespaceError) Error() string {
-	var id string
-	if e.ID != "" {
-		id = fmt.Sprintf(" (in namespace %q)", e.ID)
-	}
-
-	ee, ue := e.Err, new(UnexpectedTokenError)
-	if errors.As(e.Err, &ue) {
-		ee = ue
-	}
-
-	return fmt.Sprintf("%v%s", ee, id)
-}
-
-func (e NamespaceError) position() string {
-	ue := new(UnexpectedTokenError)
-	if errors.As(e.Err, &ue) {
-		return fmt.Sprintf("[%d:%d]", ue.Line, ue.Column)
-	}
-
-	return ""
 }
 
 type ExpressionError struct {
@@ -209,44 +160,20 @@ func (e ExpressionError) Error() string {
 		)
 	}
 
-	ee, ue := e.Err, new(file.Error)
-	if errors.As(e.Err, &ue) {
-		ee = fmt.Errorf("%w: %s", ErrInvalidExpression, ue.Message)
-		ap = "\t" + strings.ReplaceAll(ue.Snippet, "\n", "\n\t")
+	ee, fe := e.Err, new(file.Error)
+	if errors.As(e.Err, &fe) {
+		ee = fmt.Errorf("%w: %s", ErrInvalidExpression, fe.Message)
+		ap = "\t" + strings.ReplaceAll(fe.Snippet, "\n", "\n\t")
 	}
 
 	return fmt.Sprintf("%v%s%s", ee, id, ap)
 }
 
 func (e ExpressionError) position() string {
-	ue := new(file.Error)
-	if errors.As(e.Err, &ue) {
-		return fmt.Sprintf("[%d:%d]", ue.Line, ue.Column)
+	fe := new(file.Error)
+	if errors.As(e.Err, &fe) {
+		return fmt.Sprintf("[%d:%d]", fe.Line, fe.Column)
 	}
 
 	return ""
-}
-
-type UnexpectedTokenError struct {
-	Offset       int
-	Line, Column int
-	Tok          string
-	Msg          []string
-}
-
-func (e UnexpectedTokenError) Error() string {
-	var sb strings.Builder
-
-	switch {
-	case e.Tok != "":
-		sb.WriteRune(' ')
-		sb.WriteString(strconv.Quote(e.Tok))
-	}
-
-	for _, n := range e.Msg {
-		sb.WriteString(": ")
-		sb.WriteString(n)
-	}
-
-	return fmt.Sprintf("%v%s", ErrUnexpectedToken, sb.String())
 }

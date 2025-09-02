@@ -1,6 +1,9 @@
 package fn
 
-import "iter"
+import (
+	"iter"
+	"slices"
+)
 
 // OK returns its first argument unchanged.
 //
@@ -10,11 +13,31 @@ import "iter"
 //nolint:ireturn
 func OK[T, R any](v T, _ ...R) T { return v }
 
+// IsEqual is a convenience predicate for equality.
+func IsEqual[T comparable](a, b T) bool { return a == b }
+
+// IsUnequal is a convenience predicate for inequality.
+func IsUnequal[T comparable](a, b T) bool { return a != b }
+
+// IsZero is a convenience predicate for zero values.
+func IsZero[T comparable](v T) bool {
+	var t T
+
+	return IsEqual(v, t)
+}
+
+// IsNonzero is a convenience predicate for non-zero values.
+func IsNonzero[T comparable](v T) bool {
+	var t T
+
+	return IsUnequal(v, t)
+}
+
 // Apply returns a sequence that yields in-order elements of s transformed by f.
 // The types of input and output sequence elements are the same, T.
 //
-// If f is nil, the identity function is used to yield the original sequence.
 // If s is nil, nil is returned.
+// If f is nil, the identity function is used to yield the original sequence.
 func Apply[T any](
 	s iter.Seq[T],
 	f func(T) (T, bool),
@@ -22,11 +45,14 @@ func Apply[T any](
 	return Map(s, f)
 }
 
-// Map returns a sequence that yields in-order elements of s transformed by f.
+// Map returns a sequence that yields in-order elements of s that satisfy the
+// transformation predicate f.
 // The types of input and output sequence elements may differ, T and R.
 //
-// If f is nil, the identity function is used to yield the original sequence.
 // If s is nil, nil is returned.
+// If f is nil, the identity function is used to yield the original sequence.
+//
+// See [MapItems] for the analogue that operates on slices.
 func Map[T, R any](s iter.Seq[T], f func(T) (R, bool)) iter.Seq[R] {
 	if s == nil {
 		return nil
@@ -46,10 +72,22 @@ func Map[T, R any](s iter.Seq[T], f func(T) (R, bool)) iter.Seq[R] {
 	}
 }
 
+// MapItems returns a slice of in-order elements from s that satisfy the
+// transformation predicate f.
+// The types of input and output slice elements may differ, T and R.
+//
+// If s is nil, nil is returned.
+// If f is nil, the identity function is used to yield the original slice.
+//
+// See [Map] for the analogue that operates on sequences.
+func MapItems[T, R any](s []T, f func(T) (R, bool)) []R {
+	return slices.Collect(Map(slices.Values(s), f))
+}
+
 // Filter returns a sequence that yields in-order elements of s
 // that satisfy the predicate keep.
 // If s is nil, nil is returned.
-// If keep is nil, all elements are yielded.
+// If keep is nil, s is returned.
 //
 // See [FilterItems] for the analogue that operates on slices.
 func Filter[T any](s iter.Seq[T], keep func(T) bool) iter.Seq[T] {
@@ -58,7 +96,7 @@ func Filter[T any](s iter.Seq[T], keep func(T) bool) iter.Seq[T] {
 	}
 
 	if keep == nil {
-		keep = func(T) bool { return true }
+		return s
 	}
 
 	return func(yield func(T) bool) {
@@ -70,28 +108,22 @@ func Filter[T any](s iter.Seq[T], keep func(T) bool) iter.Seq[T] {
 	}
 }
 
-// FilterItems returns a sequence that yields in-order elements of s
+// FilterItems returns a slice of in-order elements from s
 // that satisfy the predicate keep.
 // If s is nil, nil is returned.
-// If keep is nil, all elements are yielded.
+// If keep is nil, s is returned.
 //
 // See [Filter] for the analogue that operates on sequences.
-func FilterItems[T any](s []T, keep func(T) bool) iter.Seq[T] {
+func FilterItems[T any](s []T, keep func(T) bool) []T {
 	if s == nil {
 		return nil
 	}
 
 	if keep == nil {
-		keep = func(T) bool { return true }
+		return s
 	}
 
-	return func(yield func(T) bool) {
-		for _, item := range s {
-			if keep(item) && !yield(item) {
-				return
-			}
-		}
-	}
+	return slices.Collect(Filter(slices.Values(s), keep))
 }
 
 // FilterKeys returns a sequence that yields in-order key-value pairs of s

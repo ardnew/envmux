@@ -7,7 +7,9 @@ package docs
 // can contain parameters, variable definitions, and can be composed of other
 // namespaces.
 //
-// Variables are evaluated as [github.com/expr-lang/expr] expressions.
+// Values assigned to variables are expressed and evaluated using a third-party
+// package [github.com/expr-lang/expr].
+// The envmux manifest grammar is a superset of the expr grammar.
 // The evaluation environment is derived from the enclosing namespace along
 // with many built-in functions and runtime variables inherited from the host
 // system. Note that the process environment is not inherited by default.

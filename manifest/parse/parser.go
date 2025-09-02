@@ -467,8 +467,8 @@ func (p *parser[_]) Execute() {
 		case ruleAction3:
 
 			idx := len(p.Namespaces[p.idx].Composites) - 1
-			p.Namespaces[p.idx].Composites[idx].arguments = append(
-				p.Namespaces[p.idx].Composites[idx].arguments, Argument{Value: text},
+			p.Namespaces[p.idx].Composites[idx].Parameters = append(
+				p.Namespaces[p.idx].Composites[idx].Parameters, Parameter{Value: text},
 			)
 
 		case ruleAction4:
@@ -2918,8 +2918,8 @@ func (p *parser[U]) Init(options ...func(*parser[U]) error) error {
 		nil,
 		/* 94 Action3 <- <{
 		  idx := len(p.Namespaces[p.idx].Composites) - 1
-		  p.Namespaces[p.idx].Composites[idx].arguments = append(
-		    p.Namespaces[p.idx].Composites[idx].arguments, Argument{Value: text},
+		  p.Namespaces[p.idx].Composites[idx].Parameters = append(
+		    p.Namespaces[p.idx].Composites[idx].Parameters, Parameter{Value: text},
 		  )
 		}> */
 		nil,

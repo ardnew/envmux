@@ -13,10 +13,11 @@ import (
 	"github.com/ardnew/envmux/cmd/envmux/cli/cmd"
 	"github.com/ardnew/envmux/cmd/envmux/cli/cmd/root/fs"
 	"github.com/ardnew/envmux/cmd/envmux/cli/cmd/root/ns"
-	"github.com/ardnew/envmux/cmd/envmux/prof"
+	"github.com/ardnew/envmux/cmd/envmux/pprof"
 	"github.com/ardnew/envmux/manifest"
 	"github.com/ardnew/envmux/manifest/config"
 	"github.com/ardnew/envmux/pkg"
+	"github.com/ardnew/envmux/pkg/fn"
 )
 
 var _ = cmd.Node(Node{}) //nolint:exhaustruct
@@ -47,25 +48,24 @@ var (
 		NoPlaceholder: true,
 		NoDefault:     true,
 	}
-	definitionRequiredFlag = ff.FlagConfig{
-		ShortName:     'u',
-		LongName:      `require-definitions`,
+	noDefaultDefinitionFlag = ff.FlagConfig{
+		ShortName:     'i',
+		LongName:      `ignore-default`,
+		Usage:         `ignore default manifest file`,
+		NoPlaceholder: true,
+		NoDefault:     true,
+	}
+	strictDefinitionsFlag = ff.FlagConfig{
+		ShortName:     's',
+		LongName:      `strict-definitions`,
 		Usage:         `treat undefined namespaces as errors`,
 		NoPlaceholder: true,
 		NoDefault:     true,
 	}
-	parallelLimitFlag = ff.FlagConfig{
+	parallelEvalLimitFlag = ff.FlagConfig{
 		ShortName:     'j',
 		LongName:      `jobs`,
 		Usage:         `maximum number of parallel tasks used during evaluation`,
-		Placeholder:   `N`,
-		NoPlaceholder: false,
-		NoDefault:     false,
-	}
-	bufferSizeFlag = ff.FlagConfig{
-		ShortName:     'b',
-		LongName:      `buffer-size`,
-		Usage:         `size of parse buffer in bytes (or given SI units)`,
 		Placeholder:   `N`,
 		NoPlaceholder: false,
 		NoDefault:     false,
@@ -94,21 +94,14 @@ var (
 		NoPlaceholder: false,
 		NoDefault:     false,
 	}
-	noDefaultDefinitionFlag = ff.FlagConfig{
-		ShortName:     'i',
-		LongName:      `ignore-default`,
-		Usage:         `ignore default manifest file`,
-		NoPlaceholder: true,
-		NoDefault:     true,
-	}
 	profileFlag = ff.FlagConfig{
 		ShortName: 'p',
 		LongName:  `profile`,
-		Usage: `enable profiling` + fmt.Sprintf(
+		Usage: `write pprof profile to file ` + fmt.Sprintf(
 			` (%s)`,
-			strings.Join(prof.Modes(), `|`),
+			strings.Join(pprof.Modes(), `|`),
 		),
-		Placeholder:   `TYPE`,
+		Placeholder:   `TYPE[=DIR]`,
 		NoPlaceholder: false,
 		NoDefault:     true,
 	}
@@ -117,31 +110,40 @@ var (
 type Node struct {
 	cmd.Config
 
-	Version              bool
-	Verbose              bool
-	NoDefaultDefinition  bool
-	IsDefinitionRequired bool
-	ParallelLimit        int
-	ConfigurationPath    []string
-	ManifestPath         []string
-	InlineDefinition     []string
-	Profile              []string
+	Version             bool
+	Verbose             bool
+	NoDefaultDefinition bool
+	StrictDefinitions   bool
+	ParallelEvalLimit   int
+	ConfigurationPath   []string
+	ManifestPath        []string
+	InlineDefinition    []string
+	Profile             string
 
 	verboseLevel int
 }
 
 func (r Node) Init(args ...any) cmd.Node { //nolint:ireturn
 	r = Node{ //nolint:exhaustruct
-		Version:              false,
-		Verbose:              false,
-		IsDefinitionRequired: false,
-		ParallelLimit:        runtime.NumCPU(),
+		Version:           false,
+		Verbose:           false,
+		StrictDefinitions: false,
+		ParallelEvalLimit: runtime.NumCPU(),
 		ConfigurationPath: []string{
 			filepath.Join(config.Dir(ID), configurationPathFlag.LongName),
 		},
 	}
 
-	flags := []ff.FlagConfig{
+	flags := fn.FilterItems(
+		// If compiled with build tag pprof, add profiling flags.
+		[]ff.FlagConfig{
+			pkg.Wrap(profileFlag, cmd.WithFlagConfig(&r.Profile)),
+		},
+		func(ff.FlagConfig) bool { return len(pprof.Modes()) > 0 },
+	)
+
+	// Remaining flags are all added unconditionally.
+	flags = append(flags,
 		pkg.Wrap(
 			versionFlag,
 			cmd.WithFlagConfig(&r.Version),
@@ -155,12 +157,12 @@ func (r Node) Init(args ...any) cmd.Node { //nolint:ireturn
 			cmd.WithFlagConfig(&r.NoDefaultDefinition),
 		),
 		pkg.Wrap(
-			definitionRequiredFlag,
-			cmd.WithFlagConfig(&r.IsDefinitionRequired),
+			strictDefinitionsFlag,
+			cmd.WithFlagConfig(&r.StrictDefinitions),
 		),
 		pkg.Wrap(
-			parallelLimitFlag,
-			cmd.WithFlagConfig(&r.ParallelLimit),
+			parallelEvalLimitFlag,
+			cmd.WithFlagConfig(&r.ParallelEvalLimit),
 		),
 		pkg.Wrap(
 			configurationPathFlag,
@@ -174,18 +176,7 @@ func (r Node) Init(args ...any) cmd.Node { //nolint:ireturn
 			inlineDefinitionFlag,
 			cmd.WithRepFlagConfig(&r.InlineDefinition),
 		),
-	}
-
-	// If compiled with build tag pprof, add profiling flags.
-	if len(prof.Modes()) > 0 {
-		flags = append(
-			flags,
-			pkg.Wrap(
-				profileFlag,
-				cmd.WithRepFlagConfig(&r.Profile),
-			),
-		)
-	}
+	)
 
 	// This must be postponed until after the command-line is parsed.
 	defaultManifest := []string{filepath.Join(config.Dir(ID), `default`)}
@@ -200,13 +191,17 @@ func (r Node) Init(args ...any) cmd.Node { //nolint:ireturn
 				LongHelp:  longHelp,
 			},
 			func(ctx context.Context, args []string) error {
-				// Initialize the profiler with all profiling modes provided
-				// via the command-line flags.
-				// If no profiling modes are provided, the profiler is not started.
-				//
+				// Initialize the profiler with profiling mode and path provided
+				// via the command-line flag.
+				prof := pprof.Profiler{
+					Mode:  r.Profile,
+					Path:  filepath.Join(config.Cache(ID), profileFlag.LongName),
+					Quiet: !r.Verbose,
+				}
+
 				// Note that profiling is only available when built with "-tags pprof".
 				// Otherwise, this is a no-op.
-				defer prof.Init(r.Profile...).Stop()
+				defer prof.Start().Stop()
 
 				if r.Version {
 					fmt.Println(ID, "version", pkg.Version)
@@ -229,11 +224,11 @@ func (r Node) Init(args ...any) cmd.Node { //nolint:ireturn
 					ctx,
 					r.ManifestPath,
 					r.InlineDefinition,
-					manifest.WithMaxParallelJobs(r.ParallelLimit),
-					manifest.WithEvalRequiresDef(r.IsDefinitionRequired),
+					manifest.WithParallelEvalLimit(r.ParallelEvalLimit),
+					manifest.WithStrictDefinitions(r.StrictDefinitions),
 				)
 				if err != nil {
-					return fmt.Errorf("%w: %w", pkg.ErrInvalidDefinitions, err)
+					return fmt.Errorf("%w: %w", pkg.ErrInaccessibleManifest, err)
 				}
 
 				man, err = man.Parse()

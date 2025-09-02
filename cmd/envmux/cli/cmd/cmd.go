@@ -94,16 +94,16 @@ func WithSubcommands(subs ...Node) pkg.Option[Config] {
 func Validate(cmd *ff.Command, set ff.Flags) (err error) {
 	switch {
 	case cmd == nil, cmd.Exec == nil:
-		return pkg.ErrInvalidCommand
+		return pkg.ErrUndefCommandExec
 
 	case set == nil, cmd.Flags == nil:
-		return pkg.ErrInvalidFlagSet
+		return pkg.ErrUndefCommandFlagSet
 
 	case cmd.Name == "",
 		cmd.Usage == "",
 		cmd.ShortHelp == "",
 		cmd.LongHelp == "":
-		return pkg.ErrInvalidInterface
+		return pkg.ErrUndefCommandUsage
 
 	default:
 		return nil

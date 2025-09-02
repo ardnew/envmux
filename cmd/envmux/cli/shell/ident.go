@@ -114,7 +114,7 @@ func (f IdentFormat) asValid() IdentFormat {
 	}
 
 	if !DefaultIdentFormat.isValid() {
-		panic(pkg.ErrInvalidEnvVar)
+		panic(pkg.ErrInvalidIdentifier)
 	}
 
 	if f.Case == (cases.Caser{}) {
