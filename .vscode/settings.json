@@ -10,7 +10,7 @@
   "go.buildFlags": [
     "-v",
     "-tags=pprof",
-    "-gcflags=github.com/ardnew/envmux/...=-N -l"
+    "-gcflags=-N -l"
   ],
 
   "go.diagnostic.vulncheck": "Imports",
@@ -23,7 +23,7 @@
   "gopls": {
     "build.buildFlags": [
       "-tags=pprof",
-      "-gcflags=github.com/ardnew/envmux/...=-N -l"
+      "-gcflags=-N -l"
     ],
     "formatting.local": "github.com/ardnew/envmux",
     "ui.codelenses": {
@@ -33,6 +33,7 @@
       "test": true,
       "tidy": true,
       "upgrade_dependency": true,
+      "vulncheck": true,
     },
     "ui.diagnostic.analyses": {
       "fieldalignment": false,
