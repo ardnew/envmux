@@ -16,7 +16,7 @@ type Target struct {
 	Arch string
 }
 
-// GetTarget returns the [Target] with GNU GCC/LLVM conventions.
+// GetTarget returns the host [Target] using GNU GCC/LLVM naming conventions.
 func GetTarget() Target {
 	t := GetPlatform()
 	switch t.Arch {
@@ -44,7 +44,7 @@ func GetTarget() Target {
 	return t
 }
 
-// GetPlatform returns the [Target] with [Go conventions].
+// GetPlatform returns the host [Target] using [Go conventions].
 //
 // [Go conventions]:
 // https://cs.opensource.google/go/go/+/master:src/cmd/dist/build.go

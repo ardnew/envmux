@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+// StringerAlwaysShowsMeta controls whether String methods include delimiters
+// around composite, parameter, and statement metadata.
 const StringerAlwaysShowsMeta = true
 
 // Namespace associates a composition of environment variable definitions with
@@ -21,6 +23,7 @@ type Namespace struct {
 	Statements []Statement
 }
 
+// String renders the namespace in a compact manifest-like representation.
 func (n Namespace) String() string {
 	if n.Ident == "" {
 		return ""
@@ -74,6 +77,7 @@ func (n Namespace) String() string {
 }
 
 // Arguments returns a [Parameter.Value] sequence of each [Namespace.Parameter].
+// Arguments yields the raw parameter values of the namespace in order.
 func (n Namespace) Arguments() iter.Seq[any] {
 	return func(yield func(any) bool) {
 		for _, p := range n.Parameters {

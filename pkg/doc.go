@@ -1,3 +1,3 @@
-// Package pkg provides utility functions and types for the envmux module and
-// command-line application.
+// Package pkg provides shared utilities and data structures used across the
+// envmux application, including errors, options, logging, and identity.
 package pkg

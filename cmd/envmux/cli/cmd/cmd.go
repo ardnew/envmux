@@ -1,5 +1,3 @@
-// Package cmd defines the interface for command-line (sub)commands.
-// Subcommands are represented using type [Node].
 package cmd
 
 import (
@@ -10,12 +8,15 @@ import (
 	"github.com/ardnew/envmux/pkg"
 )
 
+// Node describes a CLI node with an [ff.Command] and its [ff.FlagSet].
+// Implementations should be instantiable via a zero value followed by Init.
 type Node interface {
 	Command() *ff.Command
 	FlagSet() *ff.FlagSet
 	Init(args ...any) Node
 }
 
+// Usage describes basic CLI usage text for a command.
 type Usage struct {
 	Name      string
 	Syntax    string
@@ -23,16 +24,22 @@ type Usage struct {
 	LongHelp  string
 }
 
+// Exec is the function signature executed by a command.
 type Exec func(ctx context.Context, args []string) error
 
+// Config bundles an [ff.Command] and its [ff.FlagSet] for a [Node].
 type Config struct {
 	cmd *ff.Command
 	set *ff.FlagSet
 }
 
+// Command returns the underlying [ff.Command].
 func (c Config) Command() *ff.Command { return c.cmd }
+
+// FlagSet returns the underlying [ff.FlagSet].
 func (c Config) FlagSet() *ff.FlagSet { return c.set }
 
+// WithUsage constructs the underlying [ff.Command] from [Usage] and [Exec].
 func WithUsage(usage Usage, exec Exec) pkg.Option[Config] {
 	return func(c Config) Config {
 		c.set = ff.NewFlagSet(usage.Name)
@@ -51,6 +58,8 @@ func WithUsage(usage Usage, exec Exec) pkg.Option[Config] {
 	}
 }
 
+// WithFlags adds flag configurations to the node's [ff.FlagSet] and wires
+// them into the underlying [ff.Command]. Invalid flags are skipped.
 func WithFlags(cfgs ...ff.FlagConfig) pkg.Option[Config] {
 	return func(c Config) Config {
 		err := Validate(c.Command(), c.FlagSet())
@@ -59,7 +68,8 @@ func WithFlags(cfgs ...ff.FlagConfig) pkg.Option[Config] {
 		}
 
 		for _, cfg := range cfgs {
-			if _, err := c.set.AddFlag(cfg); err != nil {
+			_, err := c.set.AddFlag(cfg)
+			if err != nil {
 				continue // Skip invalid flags
 			}
 		}
@@ -70,6 +80,8 @@ func WithFlags(cfgs ...ff.FlagConfig) pkg.Option[Config] {
 	}
 }
 
+// WithSubcommands appends validated subcommands to the node and sets their
+// parent flag set appropriately.
 func WithSubcommands(subs ...Node) pkg.Option[Config] {
 	return func(c Config) Config {
 		err := Validate(c.Command(), c.FlagSet())
@@ -91,6 +103,7 @@ func WithSubcommands(subs ...Node) pkg.Option[Config] {
 	}
 }
 
+// Validate returns an error if a command or its flag set is incomplete.
 func Validate(cmd *ff.Command, set ff.Flags) (err error) {
 	switch {
 	case cmd == nil, cmd.Exec == nil:

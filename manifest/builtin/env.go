@@ -1,5 +1,3 @@
-// Package builtin provides definitions for environment variables derived from
-// the process environment and other system information.
 package builtin
 
 import (
@@ -23,6 +21,8 @@ type Env[T any] map[string]T
 
 // ParameterKey is the identifier used in expressions to refer to the implicit
 // parameter of the current expression evaluation.
+// ParameterKey is the identifier used in expressions to refer to the implicit
+// parameter value passed to a namespace.
 var ParameterKey = `_` //nolint:gochecknoglobals
 
 // NoParameter is used as a sentinel value to indicate absence of a parameter.
@@ -31,6 +31,8 @@ var ParameterKey = `_` //nolint:gochecknoglobals
 //
 // Additionally, the evaluation loop requires a non-empty parameter list to
 // function correctly. NoParameter is added to empty parameter lists.
+// NoParameter is a sentinel used to remove [ParameterKey] from the evaluation
+// environment and to allow an empty parameter list where required.
 var NoParameter any //nolint:gochecknoglobals
 
 // Private singleton cache.
@@ -43,6 +45,9 @@ var (
 
 // Cache returns a copy of the process environment cache.
 // Always use this function to access the environment map.
+// Cache returns a clone of the lazily-initialized, process-scoped environment
+// containing built-in variables and functions. The returned map can be safely
+// mutated by the caller without affecting the shared cache.
 func Cache() Env[any] {
 	envCacheOnce.Do(func() {
 		envCacheVal = Env[any]{
@@ -79,6 +84,8 @@ func Cache() Env[any] {
 	return maps.Clone(envCacheVal)
 }
 
+// CacheCoerceConst returns [expr.Option] values that mark built-in names as
+// constants in the expression compiler for improved type checking.
 func CacheCoerceConst() []expr.Option {
 	var opt []expr.Option
 
@@ -86,6 +93,7 @@ func CacheCoerceConst() []expr.Option {
 	mapType := reflect.TypeOf(cache)
 
 	for name, val := range cache.AsMap() {
+		//nolint:exhaustive
 		switch reflect.TypeOf(val).Kind() {
 		case reflect.Func:
 			opt = append(opt, expr.ConstExpr(name))
@@ -113,6 +121,8 @@ func CacheCoerceConst() []expr.Option {
 // For example, if the given context is canceled (due to interrupt, timeout,
 // etc.), the goroutine evaluating the expression will be terminated
 // automatically.
+// ContextKey is the map key under which the evaluation [context.Context] is
+// stored for use by the expression runtime.
 const ContextKey = `ctx`
 
 // WithContext is a functional [pkg.Option] that installs the [context.Context]
@@ -120,6 +130,8 @@ const ContextKey = `ctx`
 //
 // The environment is lazy-loaded via [Cache] if it is uninitialized.
 // If the context is nil, then [ContextKey] is removed from the environment.
+// WithContext installs or removes the evaluation [context.Context]. When ctx
+// is nil, the context entry is removed.
 func WithContext(ctx context.Context) pkg.Option[Env[any]] {
 	return func(v Env[any]) Env[any] {
 		if v.IsZero() {
@@ -136,6 +148,8 @@ func WithContext(ctx context.Context) pkg.Option[Env[any]] {
 	}
 }
 
+// WithParameter sets the implicit parameter value under [ParameterKey]. When
+// val is [NoParameter], the key is removed.
 func WithParameter(val any) pkg.Option[Env[any]] {
 	return func(v Env[any]) Env[any] {
 		if v.IsZero() {
@@ -152,6 +166,8 @@ func WithParameter(val any) pkg.Option[Env[any]] {
 	}
 }
 
+// WithExports merges key-value pairs from the provided maps into the
+// environment without overwriting existing keys.
 func WithExports(env ...map[string]any) pkg.Option[Env[any]] {
 	add := map[string]any{}
 
@@ -172,6 +188,7 @@ func WithExports(env ...map[string]any) pkg.Option[Env[any]] {
 	}
 }
 
+// WithEach inserts all key-value pairs yielded by seq into the environment.
 func WithEach(seq iter.Seq2[string, any]) pkg.Option[Env[any]] {
 	return func(v Env[any]) Env[any] {
 		if v.IsZero() {
@@ -184,6 +201,7 @@ func WithEach(seq iter.Seq2[string, any]) pkg.Option[Env[any]] {
 	}
 }
 
+// Export formats a single key-value pair as KEY=value for shell consumption.
 func Export(key string, value any) string {
 	var sb strings.Builder
 
@@ -277,6 +295,8 @@ func format(value any) string {
 //   - 0x0D '\r' (CR)
 //
 // The empty byte slice satisfies these conditions and returns an empty string.
+// plaintext reports whether b contains only plain-text ASCII (optionally
+// ending with NUL) and returns the trimmed string and ok result.
 func plaintext(b []byte) (string, bool) {
 	if len(b) == 0 {
 		return "", true
@@ -300,12 +320,15 @@ func plaintext(b []byte) (string, bool) {
 }
 
 // IsZero returns whether the receiver is nil or empty.
+// IsZero reports whether the environment is empty.
 func (e Env[T]) IsZero() bool { return len(e) == 0 }
 
+// AsMap returns the underlying map value.
 func (e Env[T]) AsMap() map[string]T { return map[string]T(e) }
 
 // Environ returns a slice of strings for each element in the environment
 // in the format "key=value".
+// Environ returns a slice of KEY=value strings for all entries.
 func (e Env[T]) Environ() []string {
 	ss := make([]string, 0, len(e))
 
@@ -326,6 +349,8 @@ func (e Env[T]) Environ() []string {
 // See [Env.Omit] for a similar operation that yields key-value pairs from the
 // receiver [Env] instead of the given arguments, which results in a sequence
 // of key-value pairs with unique keys.
+// Complement yields all pairs from the given environments whose key does not
+// exist in the receiver, preserving order and allowing duplicate keys.
 func (e Env[T]) Complement(universe ...Env[T]) iter.Seq2[string, T] {
 	return func(yield func(string, T) bool) {
 		for _, u := range universe {
@@ -348,6 +373,7 @@ func (e Env[T]) Complement(universe ...Env[T]) iter.Seq2[string, T] {
 // See [Env.Complement] for a similar operation that yields key-value pairs
 // from the given arguments instead of the receiver [Env], which results in a
 // sequence of key-value pairs that allows for duplicate keys.
+// Omit yields all pairs from the receiver whose key is not in keys.
 func (e Env[T]) Omit(keys ...string) iter.Seq2[string, T] {
 	return func(yield func(string, T) bool) {
 		for key, val := range e {

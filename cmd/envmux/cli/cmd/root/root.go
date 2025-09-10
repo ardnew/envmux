@@ -1,4 +1,3 @@
-// Package root defines the root command executed when no subcommands are given.
 package root
 
 import (
@@ -22,8 +21,10 @@ import (
 
 var _ = cmd.Node(Node{}) //nolint:exhaustruct
 
+// Init constructs and returns the root command node.
 func Init() Node { return new(Node).Init().(Node) } //nolint:forcetypeassert
 
+// ID is the canonical root command name.
 const ID = pkg.Name
 
 const (
@@ -35,7 +36,16 @@ const (
 //nolint:gochecknoglobals,exhaustruct
 var (
 	versionFlag = ff.FlagConfig{
-		ShortName:     'V',
+		// ShortName is omitted to avoid conflict with -v/--version.
+		//
+		// With the current behavior of [ff], the only way to support "-V" would
+		// require all flags to be case-sensitive at all times, including config
+		// and env files.
+		//
+		// But using env variables with mixed case (e.g., "ENVMUX_v[erbose]=1")
+		// is not portable, idiomatic, or appealing.
+		//
+		// For now, you must use the long name "--version" for version info.
 		LongName:      `version`,
 		Usage:         `show semantic version`,
 		NoPlaceholder: true,
@@ -48,17 +58,17 @@ var (
 		NoPlaceholder: true,
 		NoDefault:     true,
 	}
-	noDefaultDefinitionFlag = ff.FlagConfig{
+	isolateDefinitionsFlag = ff.FlagConfig{
 		ShortName:     'i',
-		LongName:      `ignore-default`,
-		Usage:         `ignore default manifest file`,
+		LongName:      `isolate`,
+		Usage:         `omit default global namespace definitions`,
 		NoPlaceholder: true,
 		NoDefault:     true,
 	}
 	strictDefinitionsFlag = ff.FlagConfig{
 		ShortName:     's',
-		LongName:      `strict-definitions`,
-		Usage:         `treat undefined namespaces as errors`,
+		LongName:      `strict`,
+		Usage:         `evaluate undefined namespaces as runtime errors`,
 		NoPlaceholder: true,
 		NoDefault:     true,
 	}
@@ -73,7 +83,7 @@ var (
 	configurationPathFlag = ff.FlagConfig{
 		ShortName:     'c',
 		LongName:      cmd.ConfigFlag,
-		Usage:         `config file containing default command-line flags with options`,
+		Usage:         `read default command-line flags from newline-delimited file`,
 		Placeholder:   `FILE`,
 		NoPlaceholder: false,
 		NoDefault:     false,
@@ -81,7 +91,7 @@ var (
 	manifestPathFlag = ff.FlagConfig{
 		ShortName:     'm',
 		LongName:      `manifest`,
-		Usage:         `manifest file containing namespace definitions ("-" is stdin)`,
+		Usage:         `read namespace definitions from manifest file ("-" is stdin)`,
 		Placeholder:   `FILE`,
 		NoPlaceholder: false,
 		NoDefault:     false,
@@ -89,7 +99,7 @@ var (
 	inlineDefinitionFlag = ff.FlagConfig{
 		ShortName:     'd',
 		LongName:      `define`,
-		Usage:         `inline namespace definitions to append to manifest`,
+		Usage:         `append inline namespace definition(s) to manifest`,
 		Placeholder:   `SOURCE`,
 		NoPlaceholder: false,
 		NoDefault:     false,
@@ -110,20 +120,20 @@ var (
 type Node struct {
 	cmd.Config
 
-	Version             bool
-	Verbose             bool
-	NoDefaultDefinition bool
-	StrictDefinitions   bool
-	ParallelEvalLimit   int
-	ConfigurationPath   []string
-	ManifestPath        []string
-	InlineDefinition    []string
-	Profile             string
+	Version            bool
+	Verbose            bool
+	IsolateDefinitions bool
+	StrictDefinitions  bool
+	ParallelEvalLimit  int
+	ConfigurationPath  []string
+	ManifestPath       []string
+	InlineDefinition   []string
+	Profile            string
 
 	verboseLevel int
 }
 
-func (r Node) Init(args ...any) cmd.Node { //nolint:ireturn
+func (r Node) Init(...any) cmd.Node { //nolint:ireturn
 	r = Node{ //nolint:exhaustruct
 		Version:           false,
 		Verbose:           false,
@@ -134,16 +144,13 @@ func (r Node) Init(args ...any) cmd.Node { //nolint:ireturn
 		},
 	}
 
-	flags := fn.FilterItems(
-		// If compiled with build tag pprof, add profiling flags.
-		[]ff.FlagConfig{
-			pkg.Wrap(profileFlag, cmd.WithFlagConfig(&r.Profile)),
-		},
-		func(ff.FlagConfig) bool { return len(pprof.Modes()) > 0 },
-	)
-
-	// Remaining flags are all added unconditionally.
-	flags = append(flags,
+	flags := append(
+		fn.FilterItems(
+			[]ff.FlagConfig{
+				pkg.Wrap(profileFlag, cmd.WithFlagConfig(&r.Profile)),
+			},
+			func(ff.FlagConfig) bool { return len(pprof.Modes()) > 0 },
+		),
 		pkg.Wrap(
 			versionFlag,
 			cmd.WithFlagConfig(&r.Version),
@@ -153,8 +160,8 @@ func (r Node) Init(args ...any) cmd.Node { //nolint:ireturn
 			cmd.WithIncFlagConfig(&r.Verbose, &r.verboseLevel),
 		),
 		pkg.Wrap(
-			noDefaultDefinitionFlag,
-			cmd.WithFlagConfig(&r.NoDefaultDefinition),
+			isolateDefinitionsFlag,
+			cmd.WithFlagConfig(&r.IsolateDefinitions),
 		),
 		pkg.Wrap(
 			strictDefinitionsFlag,
@@ -179,7 +186,6 @@ func (r Node) Init(args ...any) cmd.Node { //nolint:ireturn
 	)
 
 	// This must be postponed until after the command-line is parsed.
-	defaultManifest := []string{filepath.Join(config.Dir(ID), `default`)}
 
 	r.Config = pkg.Wrap(
 		r.Config,
@@ -193,15 +199,14 @@ func (r Node) Init(args ...any) cmd.Node { //nolint:ireturn
 			func(ctx context.Context, args []string) error {
 				// Initialize the profiler with profiling mode and path provided
 				// via the command-line flag.
-				prof := pprof.Profiler{
+				//
+				// Note that profiling is only available when built with "-tags pprof".
+				// Otherwise, Start and Stop are both no-op (safe to call).
+				defer pprof.Profiler{
 					Mode:  r.Profile,
 					Path:  filepath.Join(config.Cache(ID), profileFlag.LongName),
 					Quiet: !r.Verbose,
-				}
-
-				// Note that profiling is only available when built with "-tags pprof".
-				// Otherwise, this is a no-op.
-				defer prof.Start().Stop()
+				}.Start().Stop()
 
 				if r.Version {
 					fmt.Println(ID, "version", pkg.Version)
@@ -209,10 +214,16 @@ func (r Node) Init(args ...any) cmd.Node { //nolint:ireturn
 					return nil
 				}
 
-				// Only set the default manifest file
-				// if flag --ignore-default is unset.
-				if !r.NoDefaultDefinition {
-					r.ManifestPath = append(r.ManifestPath, defaultManifest...)
+				// Always add the default manifest file unless flag --isolate is set.
+				if !r.IsolateDefinitions {
+					r.ManifestPath = append(
+						r.ManifestPath,
+						config.DefaultManifestPath(ID)...,
+					)
+				}
+
+				if len(args) == 0 {
+					args = config.DefaultNamespace()
 				}
 
 				var (
@@ -228,23 +239,17 @@ func (r Node) Init(args ...any) cmd.Node { //nolint:ireturn
 					manifest.WithStrictDefinitions(r.StrictDefinitions),
 				)
 				if err != nil {
-					return fmt.Errorf("%w: %w", pkg.ErrInaccessibleManifest, err)
+					return pkg.ErrInaccessibleManifest.Wrap(err)
 				}
 
 				man, err = man.Parse()
 				if err != nil {
-					return pkg.IncompleteParseError{
-						Err: err, Def: r.ManifestPath, Lvl: r.VerboseLevel(),
-					}
-				}
-
-				if len(args) == 0 {
-					args = config.DefaultNamespace()
+					return err
 				}
 
 				env, err := man.Eval(ctx, args...)
 				if err != nil {
-					return fmt.Errorf("%w: %w", pkg.ErrIncompleteEval, err)
+					return err
 				}
 
 				for _, v := range env.Environ() {
@@ -266,6 +271,7 @@ func (r Node) Init(args ...any) cmd.Node { //nolint:ireturn
 	return r
 }
 
+// VerboseLevel returns the number of -v flags specified on the command line.
 func (r Node) VerboseLevel() int {
 	if r.Verbose {
 		return r.verboseLevel

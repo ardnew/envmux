@@ -12,6 +12,7 @@ type Parameter struct {
 	Value any
 }
 
+// String returns the textual form of the parameter value.
 func (p Parameter) String() string {
 	if p.Value == nil {
 		return ""

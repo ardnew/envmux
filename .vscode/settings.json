@@ -13,6 +13,13 @@
     "-gcflags=-N -l"
   ],
 
+  "go.testFlags": [
+    "-v",
+    "-tags=test,pprof",
+    "-gcflags=-N -l",
+    "-timeout=30s",
+  ],
+
   "go.diagnostic.vulncheck": "Imports",
 
   "go.lintTool": "golangci-lint",

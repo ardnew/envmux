@@ -11,6 +11,7 @@ import (
 // module. The grammar is defined by [github.com/expr-lang/expr].
 // Our grammar was designed to accommodate the embedded expression grammar.
 type Statement struct {
+	Text       string
 	Ident      string
 	Operator   string
 	Expression *Expression

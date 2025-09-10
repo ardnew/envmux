@@ -1,4 +1,4 @@
-package cli_test
+package cli
 
 import (
 	"errors"
@@ -6,33 +6,32 @@ import (
 
 	"github.com/peterbourgon/ff/v4"
 
-	"github.com/ardnew/envmux/cmd/envmux/cli"
 	"github.com/ardnew/envmux/cmd/envmux/cli/cmd/root"
 )
 
 func TestRunError_Error(t *testing.T) {
 	tests := []struct {
 		name   string
-		result cli.RunError
+		result RunError
 		want   string
 	}{
 		{
 			name:   "no error",
-			result: cli.RunError{},
+			result: RunError{},
 			want:   "",
 		},
 		{
 			name:   "with error",
-			result: cli.RunError{Err: errors.New("test error")},
+			result: RunError{Err: errors.New("test error")},
 			want:   "test error",
 		},
 		{
 			name:   "with help and error",
-			result: cli.RunError{Err: errors.New("test error"), Help: "help text"},
+			result: RunError{Err: errors.New("test error"), Help: "help text"},
 			want:   "test error",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.result.Error(); got != tt.want {
@@ -44,19 +43,19 @@ func TestRunError_Error(t *testing.T) {
 
 func TestErrRunOK(t *testing.T) {
 	// Test that ErrRunOK is the zero value
-	if cli.ErrRunOK.Err != nil {
+	if ErrRunOK.Err != nil {
 		t.Error("ErrRunOK.Err should be nil")
 	}
-	
-	if cli.ErrRunOK.Help != "" {
+
+	if ErrRunOK.Help != "" {
 		t.Error("ErrRunOK.Help should be empty")
 	}
-	
-	if cli.ErrRunOK.Code != 0 {
+
+	if ErrRunOK.Code != 0 {
 		t.Error("ErrRunOK.Code should be 0")
 	}
-	
-	if cli.ErrRunOK.Error() != "" {
+
+	if ErrRunOK.Error() != "" {
 		t.Error("ErrRunOK.Error() should return empty string")
 	}
 }
@@ -64,7 +63,7 @@ func TestErrRunOK(t *testing.T) {
 func TestMakeResult(t *testing.T) {
 	// Create a mock node for testing
 	node := root.Init()
-	
+
 	tests := []struct {
 		name     string
 		err      error
@@ -96,20 +95,20 @@ func TestMakeResult(t *testing.T) {
 			wantErr:  true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := cli.MakeResult(node, tt.err)
-			
+			result := MakeResult(node, tt.err)
+
 			if result.Code != tt.wantCode {
 				t.Errorf("MakeResult().Code = %v, want %v", result.Code, tt.wantCode)
 			}
-			
+
 			hasErr := result.Err != nil
 			if hasErr != tt.wantErr {
 				t.Errorf("MakeResult().Err = %v, want error: %v", result.Err, tt.wantErr)
 			}
-			
+
 			// Help should be set for ff.ErrHelp and ff.ErrNoExec
 			if tt.err == ff.ErrHelp || tt.err == ff.ErrNoExec {
 				if result.Help == "" {
@@ -122,20 +121,20 @@ func TestMakeResult(t *testing.T) {
 
 func TestRunError_Fields(t *testing.T) {
 	// Test that RunError fields are accessible
-	result := cli.RunError{
+	result := RunError{
 		Err:  errors.New("test"),
 		Help: "help message",
 		Code: 42,
 	}
-	
+
 	if result.Err.Error() != "test" {
 		t.Errorf("Expected Err message 'test', got %q", result.Err.Error())
 	}
-	
+
 	if result.Help != "help message" {
 		t.Errorf("Expected Help 'help message', got %q", result.Help)
 	}
-	
+
 	if result.Code != 42 {
 		t.Errorf("Expected Code 42, got %d", result.Code)
 	}

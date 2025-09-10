@@ -1,4 +1,3 @@
-// Package ns defines the "ns" subcommand used for namespace operations.
 package ns
 
 import (
@@ -11,8 +10,11 @@ import (
 
 var _ = cmd.Node(Node{}) //nolint:exhaustruct
 
+// Init constructs and returns the ns subcommand node.
 func Init() Node { return new(Node).Init().(Node) } //nolint:forcetypeassert
 
+// ID is the command name for the ns subcommand.
+//
 //go:generate sed -i -E "s/(const ID = )\"[^\"]+\"/\\1\"$GOPACKAGE\"/" "$GOFILE"
 const ID = "ns"
 
