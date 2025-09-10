@@ -1,19 +1,67 @@
 # envmux
 
-A static environment generator that composes namespaced variables using a custom domain-specific language.
+> Static environment compositor
 
-## What It Do™
+[![Go Reference](https://pkg.go.dev/badge/github.com/envmux/envmux.svg)](https://pkg.go.dev/github.com/envmux/envmux)
+[![Go Report Card](https://goreportcard.com/badge/github.com/envmux/envmux)](https://goreportcard.com/report/github.com/envmux/envmux)
 
-envmux constructs and evaluates environment variables from namespaces defined in manifest files. It uses a custom DSL that supports complex expressions, namespace composition, and parameter passing.
+## _What is this I don't even_
+
+`envmux` evaluates complex expressions assigned to namespaced variables defined in manifest files.
+
+Manifests are simple, readable, and composable. Namespaces group related variables, can include other namespaces, and can be parameterized. Expressions are evaluated with a safe expression engine.
+
+--
+
+Minimal manifest example:
+
+```text
+# file: example.env
+base {
+  APP_NAME = "envmux";
+  USERNAME = user.Username;     # builtin 'user' from host system
+  GREETING = "Hello, " + USERNAME;
+}
+```
+
+Namespaces can be composed of other namespaces by definition.
+
+Composition example:
+
+```text
+base {
+  FOO = "bar";
+}
+
+app <base> {                    # app imports all variables from base
+  MSG = FOO + "!";            # uses FOO defined in base
+}
+```
+
+Namespaces can also be parameterized either by definition or by composition.
+
+Parametric namespaces (access parameter via '_' in expressions):
+
+```text
+# Evaluate once per parameter value and merge results
+greet ("world", "team") {
+  HELLO = "Hello, " + _;      # _ is the implicit parameter
+}
+
+# Pass parameters during composition
+banner <greet("ops")> {
+  SHOUT = HELLO + "!!!";      # uses HELLO from composed greet
+}
+```
 
 ### Key Features
 
-- Namespace Composition: Construct process environments with shell agnosticism
-- Efficient Parsing: Manifest parsed using a PEG-backed grammar ([pointlander/peg](https://github.com/pointlander/peg))
-- Expression Support: Define variables using a rich expression language ([expr-lang/expr](https://github.com/expr-lang/expr))
-- Flexible Input: Read manifests from files, stdin, or directly from command-line arguments
-- Parallel Processing: Evaluate environments efficiently with configurable parallelism
-- Subcommands: Manage file system operations and namespace operations
+- **Namespace Composition**: Construct process environments independent of the shell
+- **Efficient Parsing**: Manifest parsed using a PEG-backed grammar ([pointlander/peg](https://github.com/pointlander/peg))
+- **Expression Support**: Define variables using a rich expression language ([expr-lang/expr](https://github.com/expr-lang/expr))
+- **Flexible Input**: Read manifests from files, stdin, or directly from command-line arguments
+- **Parallel Processing**: Evaluate environments efficiently with configurable parallelism
+- **Subcommands**: Manage file system operations and namespace operations
 
 ## Installation
 

@@ -11,6 +11,7 @@ import (
 )
 
 // RunError represents the result of executing a command.
+// A zero value indicates success.
 type RunError struct {
 	Err  error
 	Help string
@@ -18,8 +19,11 @@ type RunError struct {
 }
 
 // ErrRunOK is the default successful result.
+// ErrRunOK is a sentinel success value.
 var ErrRunOK = RunError{} //nolint:exhaustruct
 
+// Error implements the error interface for [RunError]. It returns the wrapped
+// error text, or an empty string for success.
 func (r RunError) Error() string {
 	if r.Err != nil {
 		return r.Err.Error()
@@ -47,7 +51,7 @@ func resultHelp(help string) pkg.Option[RunError] {
 	}
 }
 
-// MakeResult creates a Result based on the given command and error.
+// MakeResult creates a [RunError] based on the given command and error.
 func MakeResult(node cmd.Node, err error) RunError {
 	resultUsage := resultHelp(ffhelp.Command(node.Command()).String())
 

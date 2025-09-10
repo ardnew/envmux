@@ -95,6 +95,7 @@ output:
     #   path: stderr
   path-prefix: github.com/ardnew/envmux
   path-mode: abs
+  sort-results: true
   sort-order:
     - linter
     - severity

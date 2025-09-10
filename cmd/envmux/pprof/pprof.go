@@ -13,6 +13,8 @@ import (
 	"github.com/ardnew/envmux/pkg/fn"
 )
 
+// Modes returns the list of supported profiling modes when built with the
+// pprof build tag. The special mode "quiet" is omitted from the list.
 func Modes() []string {
 	return slices.Collect(fn.Filter(
 		maps.Keys(mode),

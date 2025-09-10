@@ -1,6 +1,7 @@
 package pkg
 
-// Option functions return their argument with modifications applied.
+// Option is a functional option that returns its argument with
+// modifications applied.
 type Option[T any] func(T) T
 
 // Make returns a new object of type T with the given options applied.

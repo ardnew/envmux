@@ -1,4 +1,3 @@
-// Package pprof provides profiling capabilities for the module.
 package pprof
 
 import (

@@ -19,7 +19,11 @@
         "-gcflags=-N -l"
       ],
       "env": {},
-      "args": [],
+      "args": [
+        // "-visd",
+        // "default{\n  x=1+\n}",
+        // "default{\n  x=1+\n",
+      ],
     },
   ]
 }

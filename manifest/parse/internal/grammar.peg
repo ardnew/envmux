@@ -62,6 +62,7 @@ StatementCapture <- < StatementAssn > {
   p.Namespaces[p.idx].Statements = append(
     p.Namespaces[p.idx].Statements,
     Statement{
+      Text: text,
       Ident: strings.TrimSpace(ident),
       Operator: "=",
       Expression: &Expression{Src: strings.TrimSpace(expr)},

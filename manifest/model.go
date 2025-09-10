@@ -1,11 +1,10 @@
-// Package manifest defines an environment model that can parse and evaluate
-// namespaced variables defined with complex expressions.
 package manifest
 
 import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -13,16 +12,26 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/carlmjohnson/flowmatic"
 	"github.com/expr-lang/expr"
+	"github.com/expr-lang/expr/file"
 
 	"github.com/ardnew/envmux/manifest/builtin"
 	"github.com/ardnew/envmux/manifest/config"
 	"github.com/ardnew/envmux/manifest/parse"
 	"github.com/ardnew/envmux/pkg"
 	"github.com/ardnew/envmux/pkg/fn"
+)
+
+// Indirect references to functions to allow for testing.
+//
+//nolint:gochecknoglobals
+var (
+	compileExpr          = expr.Compile
+	manifestFromStringFn = manifestFromString
 )
 
 // Model evaluates namespaced environment variables with expression support.
@@ -61,6 +70,8 @@ func export(sub ...parameterEnv) pkg.Option[parameterEnv] {
 	}
 }
 
+// String returns the JSON representation of the model or an error message if
+// marshaling fails.
 func (m Model) String() string {
 	e, err := json.Marshal(m)
 	if err == nil {
@@ -70,19 +81,25 @@ func (m Model) String() string {
 	return string(e)
 }
 
+// IsZero reports whether the model has no AST configured.
 func (m Model) IsZero() bool { return m.AST == nil }
 
 // Parse reads a manifest from [Model.ManifestReader] and initializes
 // the returned [Model.AST] used to evaluate constructed environments.
+// Parse reads a manifest from [Model.ManifestReader] and initializes the
+// [Model.AST] used for evaluation.
 func (m Model) Parse() (Model, error) {
 	ast := parse.New()
-	if _, err := ast.ReadFrom(m.ManifestReader); err != nil {
+	if _, err := ast.ReadFrom(m.ManifestReader); err != nil { //nolint:noinlineerr
 		return Model{}, err
 	}
 
 	return pkg.Wrap(m, WithAST(ast)), nil
 }
 
+// Eval evaluates the requested namespaces and returns a fully constructed
+// environment mapping. When [Model.StrictDefinitions] is true, unknown
+// namespaces return an error.
 func (m Model) Eval(
 	ctx context.Context, namespaces ...string,
 ) (builtin.Env[any], error) {
@@ -92,7 +109,7 @@ func (m Model) Eval(
 
 	list := make([]parse.Composite, len(s))
 	for i, id := range s {
-		list[i] = parse.Composite{Ident: id}
+		list[i] = parse.Composite{Ident: id, Parameters: nil}
 	}
 
 	env, err := m.eval(ctx, list...)
@@ -151,67 +168,38 @@ func (m Model) eval(
 //
 // These most likely occur when a namespace is composed of itself
 // indirectly or when the same manifest is included multiple times.
-const findDuplicateNamespaces = false
+//
+// These should never occur in practice because duplicate namespace
+// instances in the composition graph are pruned prior to evaluation.
+//
+//nolint:gochecknoglobals
+var findDuplicateNamespaces = false
 
 func (m Model) evalComposition(
 	ctx context.Context,
 	composite parse.Composite,
 ) (parameterEnv, error) {
-	matchIdent := func(ns parse.Namespace) bool {
+	// locate namespace by identifier
+	idx := slices.IndexFunc(m.Namespaces, func(ns parse.Namespace) bool {
 		return ns.Ident == composite.Ident
-	}
-
-	// Locate the first namespace in the receiver whose identifier
-	// matches the given composite namespace identifier.
-	//
-	// This protects against duplicate namespace definitions
-	// and recursive namespace compositions,
-	// but it doesn't currently notify the user of such conflicts.
-	idx := slices.IndexFunc(m.Namespaces, matchIdent)
+	})
 
 	// Verify that the namespace exists in the model.
 	if idx < 0 {
-		// Throw an error if we have enabled the option that
-		// requires a definition for each namespace evaluated.
 		if m.StrictDefinitions {
-			err := pkg.ErrUndefinedNamespace.WithDetail(composite.Ident)
-
-			return parameterEnv{}, err
+			return parameterEnv{}, pkg.ErrUndefinedNamespace.WithDetail(
+				composite.Ident,
+			)
 		}
 
-		// Otherwise, we silently ignore unknown namespaces.
 		return parameterEnv{}, nil //nolint:exhaustruct
 	}
 
-	// This is the real namespace def resolved
-	// from the given composite namespace identifier.
 	def := m.Namespaces[idx]
 
+	// optional duplicate detection (debug)
 	if findDuplicateNamespaces {
-		// Now that it has been resolved, we can search for duplicate definitions
-		// (and not just duplicate identifiers).
-		matchDups := func(s string) func(ns parse.Namespace) bool {
-			return func(ns parse.Namespace) bool {
-				return ns.String() == s
-			}
-		}(def.String())
-
-		pos, dup := idx, make([]int, 0, len(m.Namespaces)-idx-1)
-
-		for 0 <= pos && pos < len(m.Namespaces)-1 {
-			off := pos + 1
-			if pos = slices.IndexFunc(m.Namespaces[off:], matchDups); pos >= 0 {
-				dup = append(dup, off+pos)
-			}
-		}
-
-		if numDuplicates := len(dup); numDuplicates > 0 {
-			panic(fmt.Sprintf(
-				"found %d duplicate definitions for namespace:\n\t%s\n",
-				numDuplicates,
-				def.String(),
-			))
-		}
+		checkDuplicateDefinitions(m.Namespaces, idx, def)
 	}
 
 	env := parameterEnv{
@@ -219,8 +207,7 @@ func (m Model) evalComposition(
 		pars: []any{},
 	}
 
-	// Recursively evaluate and collect the environments of
-	// all composite namespaces declared by the current namespace.
+	// recursively evaluate composed namespaces
 	if len(def.Composites) > 0 {
 		var err error
 
@@ -230,17 +217,17 @@ func (m Model) evalComposition(
 		}
 	}
 
-	// Collect all parameters:
+	// collect parameters (definition, composed, inline)
 	evalParams := slices.Concat(
-		slices.Collect(def.Arguments()),       // namespace definition
-		env.pars,                              // composite definitions
-		slices.Collect(composite.Arguments()), // composite inline parameters
+		slices.Collect(def.Arguments()),
+		env.pars,
+		slices.Collect(composite.Arguments()),
 	)
-
 	if len(evalParams) == 0 {
 		evalParams = append(evalParams, builtin.NoParameter)
 	}
 
+	// evaluate for each parameter set
 	for _, par := range evalParams {
 		e := pkg.Make(
 			builtin.WithContext(ctx),
@@ -250,41 +237,106 @@ func (m Model) evalComposition(
 			builtin.WithExports(env.eval),
 		)
 
-		// We have to pass the environment to both [expr.Compile] and [expr.Run].
-		// The former builds type information for validating the latter.
 		opt := []expr.Option{
 			expr.Env(e.AsMap()),
 			expr.Optimize(true),
 			expr.WithContext(builtin.ContextKey),
 			expr.AllowUndefinedVariables(),
-			expr.Patch(parameterType{Env: e}),
+			parameterType{e}.Patch(),
 		}
-
 		opt = append(opt, builtin.CacheCoerceConst()...)
 
-		// Evaluate mappings
-		for _, sta := range def.Statements {
-			program, err := expr.Compile(sta.Expression.Src, opt...)
-			if err != nil {
-				return parameterEnv{}, pkg.ExpressionError{
-					Namespace: def.Ident, Statement: sta.Ident, Err: err,
-				}
-			}
-
-			res, err := expr.Run(program, e.AsMap())
-			if err != nil {
-				return parameterEnv{}, err
-			}
-
-			e[sta.Ident] = unquote(res)
-
-			maps.Copy(env.eval, collect(e))
+		err := evalNamespaceStatements(def, e, opt, &env)
+		if err != nil {
+			return parameterEnv{}, err
 		}
 	}
 
 	return env, nil
 }
 
+// checkDuplicateDefinitions detects duplicate namespace definitions and panics
+// when duplicates are found (used only for debug mode).
+func checkDuplicateDefinitions(
+	namespaces []parse.Namespace,
+	idx int,
+	def parse.Namespace,
+) {
+	// Now that it has been resolved, we can search for duplicate definitions
+	// (and not just duplicate identifiers).
+	matchDups := func(s string) func(ns parse.Namespace) bool {
+		return func(ns parse.Namespace) bool {
+			return ns.String() == s
+		}
+	}(def.String())
+
+	pos, dup := idx, make([]int, 0, len(namespaces)-idx-1)
+
+	for 0 <= pos && pos < len(namespaces)-1 {
+		off := pos + 1
+		if pos = slices.IndexFunc(namespaces[off:], matchDups); pos >= 0 {
+			dup = append(dup, off+pos)
+			// advance absolute position to continue scanning after the found match
+			pos = off + pos
+
+			continue
+		}
+
+		break
+	}
+
+	if numDuplicates := len(dup); numDuplicates > 0 {
+		panic(fmt.Sprintf(
+			"found %d duplicate definitions for namespace:\n\t%s\n",
+			numDuplicates,
+			def.String(),
+		))
+	}
+}
+
+// evalNamespaceStatements compiles and runs each statement in the namespace
+// for the provided environment and merges the results into envPtr.
+func evalNamespaceStatements(
+	def parse.Namespace,
+	e builtin.Env[any],
+	opt []expr.Option,
+	envPtr *parameterEnv,
+) error {
+	wrapEvalError := func(sta parse.Statement, err error) error {
+		var errFile *file.Error
+		if errors.As(err, &errFile) {
+			return pkg.MakeEvalError(
+				def.Ident,
+				sta.Ident,
+				sta.Expression.Src,
+				errFile.From+1,
+			)
+		}
+
+		return err
+	}
+
+	for _, sta := range def.Statements {
+		program, err := compileExpr(sta.Expression.Src, opt...)
+		if err != nil {
+			return wrapEvalError(sta, err)
+		}
+
+		res, err := expr.Run(program, e.AsMap())
+		if err != nil {
+			return err
+		}
+
+		e[sta.Ident] = unquote(res)
+		maps.Copy(envPtr.eval, collect(e))
+	}
+
+	return nil
+}
+
+// Make constructs a [Model] by reading one or more manifest sources and
+// applying the provided options. It accepts both file paths and inline
+// definitions.
 func Make(
 	_ context.Context,
 	manifests, defines []string,
@@ -310,7 +362,7 @@ func Make(
 	}
 
 	for def := range fn.Map(slices.Values(defines), nonEmpty) {
-		r, err := manifestFromString(def)
+		r, err := manifestFromStringFn(def)
 		if err != nil {
 			return Model{}, err
 		}
@@ -380,10 +432,11 @@ func readerFromFile(filename string) (io.Reader, error) {
 
 func manifestFromPath(path string) (io.Reader, error) {
 	// Handle special cases for path to manifest file:
-	//  1. If [run.StdinSpecPath] given as flag argument, use stdin
-	//  2. If flag argument is a relative path, use the first existing:
-	//     a. relative to CWD
-	//     b. relative to the manifest directory
+	//
+	//   1. If [run.StdinSpecPath] given as flag argument, use stdin
+	//   2. If flag argument is a relative path, use the first existing:
+	//     A. relative to CWD
+	//     B. relative to the manifest directory
 	if path == config.StdinManifestPath {
 		// Read from stdin
 		return os.Stdin, nil
@@ -396,8 +449,8 @@ func manifestFromPath(path string) (io.Reader, error) {
 
 	// During the first iteration, control will either:
 	//
-	//  1. successfully construct a reader (r != nil, break loop), or
-	//  2. fail to construct a reader (r == nil) with error (err != nil), and:
+	//   1. successfully construct a reader (r != nil, break loop), or
+	//   2. fail to construct a reader (r == nil) with error (err != nil), and:
 	//     A. the path is absolute, error persists (err != nil, break loop), or
 	//     B. the path is relative to CWD, try to set path as an absolute path
 	//        relative to the spec directory, and:
@@ -407,7 +460,8 @@ func manifestFromPath(path string) (io.Reader, error) {
 	//           because condition 2B (the "recursive" step) will be false,
 	//           since path is now guaranteed to be absolute.
 	for r == nil && err == nil {
-		if r, err = readerFromFile(path); err != nil && !filepath.IsAbs(path) {
+		r, err = readerFromFile(path)
+		if err != nil && !filepath.IsAbs(path) {
 			path, err = filepath.Abs(filepath.Join(config.Dir(pkg.Name), path))
 		}
 	}
@@ -428,4 +482,26 @@ func collect(e builtin.Env[any]) builtin.Env[any] {
 			},
 		),
 	)
+}
+
+// Unquote returns the unquoted value of a string or byte slice.
+// If the value is not a string or byte slice, it is returned unchanged.
+func unquote(value any) any {
+	var s string
+
+	switch v := value.(type) {
+	case string:
+		s = v
+	case []byte:
+		s = string(v)
+	case interface{ String() string }:
+		s = v.String()
+	}
+
+	us, err := strconv.Unquote(s)
+	if err == nil {
+		return us
+	}
+
+	return value
 }

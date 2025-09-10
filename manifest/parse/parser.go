@@ -483,6 +483,7 @@ func (p *parser[_]) Execute() {
 			p.Namespaces[p.idx].Statements = append(
 				p.Namespaces[p.idx].Statements,
 				Statement{
+					Text:       text,
 					Ident:      strings.TrimSpace(ident),
 					Operator:   "=",
 					Expression: &Expression{Src: strings.TrimSpace(expr)},
@@ -2934,6 +2935,7 @@ func (p *parser[U]) Init(options ...func(*parser[U]) error) error {
 		  p.Namespaces[p.idx].Statements = append(
 		    p.Namespaces[p.idx].Statements,
 		    Statement{
+		      Text: text,
 		      Ident: strings.TrimSpace(ident),
 		      Operator: "=",
 		      Expression: &Expression{Src: strings.TrimSpace(expr)},

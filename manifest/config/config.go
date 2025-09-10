@@ -10,16 +10,16 @@ import (
 // Prefix returns the base prefix string used to construct the path to the
 // configuration directory and the prefix for environment variable identifiers.
 //
-// By default, the prefix is the base name of the executable file.
-// unless it matches one of the following substitution rules:
-//
-//   - "__debug_bin" (default output of the dlv debugger): replaced with [ID]
+// By default, Prefix is the base name of the executable file unless it matches
+// one of the following substitution rules:
+//   - "__debug_bin" (default output of the dlv debugger): replaced with cmd
 //   - "^\.+" (dot-prefixed names): remove the dot prefix
 //
 //nolint:gochecknoglobals
 var Prefix = func(cmd string) string {
 	id := os.Args[0]
-	if exe, err := os.Executable(); err == nil {
+	exe, err := os.Executable()
+	if err == nil {
 		id = exe
 	}
 
@@ -58,7 +58,8 @@ var Dir = func(cmd string) string {
 			root = filepath.Join(root, ".config")
 		} else {
 			var err error
-			if root, err = os.Getwd(); err != nil {
+			root, err = os.Getwd()
+			if err != nil {
 				root = "."
 			}
 		}
@@ -67,6 +68,9 @@ var Dir = func(cmd string) string {
 	return filepath.Join(root, Prefix(cmd))
 }
 
+// Cache returns the cache directory path used by the CLI for transient files.
+//
+//nolint:gochecknoglobals
 var Cache = func(cmd string) string {
 	root, ok := os.LookupEnv("XDG_CACHE_HOME")
 	if !ok {
@@ -74,7 +78,8 @@ var Cache = func(cmd string) string {
 			root = filepath.Join(root, ".cache")
 		} else {
 			var err error
-			if root, err = os.Getwd(); err != nil {
+			root, err = os.Getwd()
+			if err != nil {
 				root = "."
 			}
 		}

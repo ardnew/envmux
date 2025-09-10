@@ -1,10 +1,9 @@
-// Package parse implements a parser for manifests containing namespace
-// definitions.
 package parse
 
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,15 +13,24 @@ import (
 	"github.com/ardnew/envmux/pkg"
 )
 
+// Token is the unsigned integer token type used by the generated PEG parser.
+// It encodes rule indices and positions within the parser buffer.
 type Token uint32
 
 const (
-	TokenSize      = int(unsafe.Sizeof(Token(0)))
+	// TokenSize is the size in bytes of a single [Token] value.
+	TokenSize = int(unsafe.Sizeof(Token(0)))
+	// DefaultBufSize is the default parser buffer size used when reading
+	// manifests via [AST.ReadFrom].
 	DefaultBufSize = 1 << 15 // 32 KiB
 
-	FS = `,`  // FS matches a field separator.
-	RS = `;`  // RS matches a record separator.
-	NL = `\n` // NL matches a newline character.
+	// FS is the field separator character used when rendering manifests.
+	FS = `,`
+	// RS is the statement/record separator character used when rendering
+	// manifests.
+	RS = `;`
+	// NL is the newline escape sequence used when rendering manifests.
+	NL = `\n`
 
 	co, cc = `<`, `>`
 	so, sc = `{`, `}`
@@ -38,6 +46,9 @@ type AST struct {
 	pretty  bool
 }
 
+// New constructs a new, empty [AST] with reasonable defaults applied.
+// Use [WithBufSize] and [WithPretty] to override defaults as needed.
+//
 //nolint:exhaustruct
 func New() *AST {
 	return &AST{
@@ -47,6 +58,9 @@ func New() *AST {
 	}
 }
 
+// WithBufSize sets the internal parser buffer size used when reading manifests
+// with [AST.ReadFrom]. Values smaller than [TokenSize] are clamped, and values
+// are rounded up to the nearest multiple of [TokenSize].
 func WithBufSize(bufSize int) pkg.Option[AST] {
 	if bufSize < TokenSize {
 		bufSize = DefaultBufSize // Sanity barrier.
@@ -61,6 +75,8 @@ func WithBufSize(bufSize int) pkg.Option[AST] {
 	}
 }
 
+// WithPretty toggles pretty formatting for [AST] when rendered via
+// [fmt.Formatter] or [fmt.Stringer].
 func WithPretty(pretty bool) pkg.Option[AST] {
 	return func(a AST) AST {
 		a.pretty = pretty
@@ -69,6 +85,8 @@ func WithPretty(pretty bool) pkg.Option[AST] {
 	}
 }
 
+// Format implements [fmt.Formatter] to render the AST in compact or pretty
+// form, depending on the receiver's Pretty setting and the format verb.
 func (a *AST) Format(f fmt.State, c rune) {
 	if a == nil {
 		fmt.Fprint(f, "<nil>")
@@ -135,11 +153,25 @@ func (a *AST) ReadFrom(r io.Reader) (int64, error) {
 		Size[Token](min(int(n), a.bufSize)),
 	}
 
-	if err = a.Init(options...); err != nil {
+	err = a.Init(options...)
+	if err != nil {
 		return n, err
 	}
 
-	err = a.Parse()
+	wrapParseError := func(err error) error {
+		var errParse *parseError[Token]
+
+		if errors.As(err, &errParse) {
+			return pkg.MakeParseError(
+				errParse.p.Buffer,
+				int(errParse.maxToken.begin+1),
+			)
+		}
+
+		return err
+	}
+
+	err = wrapParseError(a.Parse())
 	defer a.Execute()
 
 	return n, err

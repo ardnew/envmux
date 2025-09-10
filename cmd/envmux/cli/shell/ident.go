@@ -1,16 +1,3 @@
-// Package shell defines a generic variable declaration syntax compatible with
-// most environments.
-//
-// Users can configure how identifiers are formatted in two ways,
-// depending on how much adjustment is needed.
-//
-//  1. For simple adjustments, modify [DefaultIdentFormat] fields and keep the
-//     default formatting function [MakeIdent].
-//  2. Otherwise, assign a custom formatting function to [MakeIdent] for full
-//     control of the format.
-//
-// The envmux packages call [MakeIdent] to format variable identifiers,
-// assigning to either one of these exported variables is sufficient.
 package shell
 
 import (
@@ -41,8 +28,11 @@ var DefaultIdentFormat = IdentFormat{
 	Unicode: false,                     // Do not accept Unicode (ASCII-only).
 }
 
-// MakeIdent is the default formatting function for variable identifiers.
-// It uses [DefaultIdentFormat] to format words as a single variable identifier.
+// MakeIdent formats words as a single variable identifier using
+// [DefaultIdentFormat] by default. Assign a different function to override
+// formatting globally.
+//
+//nolint:gochecknoglobals
 var MakeIdent = func(words ...string) string {
 	return DefaultIdentFormat.makeIdent(words...)
 }

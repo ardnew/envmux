@@ -1,4 +1,3 @@
-// Package fs defines the "fs" subcommand used for file system management.
 package fs
 
 import (
@@ -11,8 +10,11 @@ import (
 
 var _ = cmd.Node(Node{}) //nolint:exhaustruct
 
+// Init constructs and returns the fs subcommand node.
 func Init() Node { return new(Node).Init().(Node) } //nolint:forcetypeassert
 
+// ID is the command name for the fs subcommand.
+//
 //go:generate sed -i -E "s/(const ID = )\"[^\"]+\"/\\1\"$GOPACKAGE\"/" "$GOFILE"
 const ID = "fs"
 

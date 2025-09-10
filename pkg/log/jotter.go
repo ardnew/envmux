@@ -12,7 +12,7 @@ import (
 //nolint:gochecknoglobals
 var (
 	// DefaultOutput is the default output destination for log messages.
-	DefaultOutput = os.Stdout
+	DefaultOutput io.Writer = os.Stdout
 
 	// DefaultOptions are the default handler options for slog handlers.
 	DefaultOptions = &slog.HandlerOptions{} //nolint:exhaustruct
@@ -44,11 +44,12 @@ func MakeJotter(opts ...pkg.Option[Jotter]) Jotter {
 }
 
 // WithLeveler returns an option that sets the [slog.Leveler] for a [Jotter].
-// If the provided leveler is already a [Jotter], chaining is prevented.
+// If the provided leveler is already a [Jotter], an [pkg.Option] is returned
+// that returns leveler directly, preventing self-referential chains.
 func WithLeveler(leveler slog.Leveler) pkg.Option[Jotter] {
 	return func(jotter Jotter) Jotter {
 		if j, ok := leveler.(Jotter); ok {
-			return j // prevent self-referential chains
+			return j
 		}
 
 		jotter.leveler = leveler
@@ -58,11 +59,12 @@ func WithLeveler(leveler slog.Leveler) pkg.Option[Jotter] {
 }
 
 // WithHandler returns an option that sets the [slog.Handler] for a [Jotter].
-// If the provided handler is already a [Jotter], chaining is prevented.
+// If the provided handler is already a [Jotter], an [pkg.Option] is returned
+// that returns handler directly, preventing self-referential chains.
 func WithHandler(handler slog.Handler) pkg.Option[Jotter] {
 	return func(jotter Jotter) Jotter {
 		if j, ok := handler.(Jotter); ok {
-			return j // prevent self-referential chains
+			return j
 		}
 
 		jotter.handler = handler

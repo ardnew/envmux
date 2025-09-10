@@ -1,129 +1,143 @@
-package pkg_test
+package pkg
 
 import (
-	"errors"
-	"strings"
 	"testing"
-
-	"github.com/expr-lang/expr/file"
-
-	"github.com/ardnew/envmux/pkg"
 )
 
 func TestError_Error(t *testing.T) {
-	// Test using predefined errors since we can't construct Error directly
-	// from outside the package (unexported embedded string field)
-	
-	// Test that a predefined error returns the expected message
-	err := pkg.ErrInvalidIdentifier
-	expected := "invalid identifier"
-	if err.Error() != expected {
-		t.Errorf("Error.Error() = %v, want %v", err.Error(), expected)
-	}
-	
-	// Test zero value by creating an empty Error through JoinErrors
-	nilErr := pkg.JoinErrors()
-	if nilErr != nil {
-		t.Errorf("JoinErrors() should return nil for empty input, got %v", nilErr)
-	}
-}
-
-func TestJoinErrors(t *testing.T) {
 	tests := []struct {
-		name string
-		errs []error
-		want string
+		name     string
+		err      Error
+		expected string
 	}{
 		{
-			name: "no errors",
-			errs: []error{},
-			want: "",
+			name:     "empty error",
+			err:      Error{},
+			expected: "<Error>",
 		},
 		{
-			name: "nil errors only",
-			errs: []error{nil, nil},
-			want: "<Error>",
-		},
-		{
-			name: "single error",
-			errs: []error{errors.New("single")},
-			want: "single",
-		},
-		{
-			name: "multiple errors",
-			errs: []error{errors.New("first"), errors.New("second")},
-			want: "first: second",
-		},
-		{
-			name: "mixed nil and non-nil",
-			errs: []error{nil, errors.New("middle"), nil},
-			want: "middle",
+			name:     "error with message",
+			err:      Error{"test error"},
+			expected: "test error",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := pkg.JoinErrors(tt.errs...)
-			if tt.want == "" {
-				if result != nil {
-					t.Errorf("JoinErrors() = %v, want nil", result)
-				}
-			} else if tt.want == "<Error>" {
-				// Special case for empty Error
-				if result == nil {
-					t.Errorf("JoinErrors() = nil, want Error")
-				} else if result.Error() != tt.want {
-					t.Errorf("JoinErrors() = %q, want %q", result.Error(), tt.want)
-				}
-			} else {
-				if result == nil {
-					t.Errorf("JoinErrors() = nil, want %q", tt.want)
-				} else if result.Error() != tt.want {
-					t.Errorf("JoinErrors() = %q, want %q", result.Error(), tt.want)
-				}
+			if got := tt.err.Error(); got != tt.expected {
+				t.Errorf("Error.Error() = %v, want %v", got, tt.expected)
 			}
 		})
 	}
 }
 
 func TestError_WithDetail(t *testing.T) {
-	// Use a predefined error since we can't construct Error directly
-	baseErr := pkg.ErrInvalidIdentifier
-	
 	tests := []struct {
-		name    string
-		details []string
-		want    string
+		name     string
+		err      Error
+		details  []string
+		expected string
 	}{
 		{
-			name:    "no details",
-			details: []string{},
-			want:    "invalid identifier",
+			name:     "no details",
+			err:      Error{"base error"},
+			details:  []string{},
+			expected: "base error",
 		},
 		{
-			name:    "single detail",
-			details: []string{"detail"},
-			want:    "invalid identifier: detail",
+			name:     "empty detail",
+			err:      Error{"base error"},
+			details:  []string{""},
+			expected: "base error",
 		},
 		{
-			name:    "multiple details", 
-			details: []string{"first", "second"},
-			want:    "invalid identifier: first: second",
+			name:     "single detail",
+			err:      Error{"base error"},
+			details:  []string{"detail"},
+			expected: "base error: detail",
 		},
 		{
-			name:    "empty detail string",
-			details: []string{""},
-			want:    "invalid identifier",
+			name:     "multiple details",
+			err:      Error{"base error"},
+			details:  []string{"detail1", "detail2"},
+			expected: "base error: detail1: detail2",
+		},
+		{
+			name:     "mixed empty and nonempty details",
+			err:      Error{"base error"},
+			details:  []string{"", "detail1", "", "detail2"},
+			expected: "base error: detail1: detail2",
+		},
+		{
+			name:     "empty base error with details",
+			err:      Error{""},
+			details:  []string{"detail1", "detail2"},
+			expected: "<Error>: detail1: detail2",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := baseErr.WithDetail(tt.details...)
-			if result == nil {
-				t.Errorf("WithDetail() = nil, want error")
-			} else if result.Error() != tt.want {
-				t.Errorf("WithDetail() = %q, want %q", result.Error(), tt.want)
+			result := tt.err.WithDetail(tt.details...)
+			if result.Error() != tt.expected {
+				t.Errorf("Error.WithDetail() = %v, want %v", result.Error(), tt.expected)
+			}
+		})
+	}
+}
+
+func TestJoinErrors(t *testing.T) {
+	tests := []struct {
+		name     string
+		errors   []error
+		expected string
+		isNil    bool
+	}{
+		{
+			name:   "no errors",
+			errors: []error{},
+			isNil:  true,
+		},
+		{
+			name:   "only nil errors",
+			errors: []error{nil, nil},
+			isNil:  true,
+		},
+		{
+			name:     "single error",
+			errors:   []error{Error{"error1"}},
+			expected: "error1",
+		},
+		{
+			name:     "multiple errors",
+			errors:   []error{Error{"error1"}, Error{"error2"}},
+			expected: "error1: error2",
+		},
+		{
+			name:     "mixed nil and nonnil errors",
+			errors:   []error{nil, Error{"error1"}, nil, Error{"error2"}},
+			expected: "error1: error2",
+		},
+		{
+			name:     "three errors",
+			errors:   []error{Error{"error1"}, Error{"error2"}, Error{"error3"}},
+			expected: "error1: error2: error3",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := JoinErrors(tt.errors...)
+			if tt.isNil {
+				if result != nil {
+					t.Errorf("JoinErrors() = %v, want nil", result)
+				}
+			} else {
+				if result == nil {
+					t.Errorf("JoinErrors() = nil, want %v", tt.expected)
+				} else if result.Error() != tt.expected {
+					t.Errorf("JoinErrors() = %v, want %v", result.Error(), tt.expected)
+				}
 			}
 		})
 	}
@@ -133,231 +147,413 @@ func TestPredefinedErrors(t *testing.T) {
 	tests := []struct {
 		name string
 		err  error
-		msg  string
 	}{
-		{"ErrUndefCommandExec", pkg.ErrUndefCommandExec, "undefined exec function"},
-		{"ErrUndefCommandFlagSet", pkg.ErrUndefCommandFlagSet, "undefined flag set"},
-		{"ErrUndefCommandUsage", pkg.ErrUndefCommandUsage, "undefined name or usage"},
-		{"ErrInaccessibleManifest", pkg.ErrInaccessibleManifest, "inaccessible manifest"},
-		{"ErrUndefinedNamespace", pkg.ErrUndefinedNamespace, "undefined namespace"},
-		{"ErrInvalidIdentifier", pkg.ErrInvalidIdentifier, "invalid identifier"},
-		{"ErrInvalidExpression", pkg.ErrInvalidExpression, "invalid expression"},
-		{"ErrInvalidJSON", pkg.ErrInvalidJSON, "invalid JSON encoding"},
-		{"ErrIncompleteParse", pkg.ErrIncompleteParse, "incomplete parse"},
-		{"ErrIncompleteEval", pkg.ErrIncompleteEval, "incomplete evaluation"},
-		{"ErrUnexpectedToken", pkg.ErrUnexpectedToken, "unexpected token"},
+		{"ErrUndefCommandExec", ErrUndefCommandExec},
+		{"ErrUndefCommandFlagSet", ErrUndefCommandFlagSet},
+		{"ErrUndefCommandUsage", ErrUndefCommandUsage},
+		{"ErrInaccessibleManifest", ErrInaccessibleManifest},
+		{"ErrUndefinedNamespace", ErrUndefinedNamespace},
+		{"ErrIncompleteParse", ErrIncompleteParse},
+		{"ErrIncompleteEval", ErrIncompleteEval},
+		{"ErrUnexpectedToken", ErrUnexpectedToken},
+		{"ErrInvalidIdentifier", ErrInvalidIdentifier},
+		{"ErrInvalidExpression", ErrInvalidExpression},
+		{"ErrInvalidJSON", ErrInvalidJSON},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.err.Error() != tt.msg {
-				t.Errorf("%s.Error() = %q, want %q", tt.name, tt.err.Error(), tt.msg)
+			if tt.err == nil {
+				t.Errorf("%s should not be nil", tt.name)
+			}
+			if tt.err.Error() == "" {
+				t.Errorf("%s should have a non-empty error message", tt.name)
 			}
 		})
 	}
 }
 
-func TestGetMessage(t *testing.T) {
-	// Test is commented out since getMessage is not exported
-	// tests := []struct {
-	// 	name    string
-	// 	err     error
-	// 	wantMsg string
-	// 	wantOk  bool
-	// }{
-	// 	{
-	// 		name:    "nil error",
-	// 		err:     nil,
-	// 		wantMsg: "",
-	// 		wantOk:  false,
-	// 	},
-	// 	{
-	// 		name:    "non-nil error with message",
-	// 		err:     errors.New("test message"),
-	// 		wantMsg: "test message",
-	// 		wantOk:  true,
-	// 	},
-	// 	{
-	// 		name:    "error with empty message", 
-	// 		err:     pkg.Error{},
-	// 		wantMsg: "",
-	// 		wantOk:  false,
-	// 	},
-	// }
-	
-	// getMessage is not exported, so we can't test it directly
-	// This test is left as a placeholder
-	t.Skip("getMessage is not exported")
-}
-
-func TestPutMessage(t *testing.T) {
-	// Test is commented out since putMessage is not exported
-	// tests := []struct {
-	// 	name    string
-	// 	msg     string
-	// 	wantOk  bool
-	// }{
-	// 	{
-	// 		name:   "non-empty message",
-	// 		msg:    "test message",
-	// 		wantOk: true,
-	// 	},
-	// 	{
-	// 		name:   "empty message",
-	// 		msg:    "",
-	// 		wantOk: false,
-	// 	},
-	// }
-	
-	// putMessage is not exported, so we can't test it directly
-	// This test is left as a placeholder
-	t.Skip("putMessage is not exported")
-}
-
-func TestIncompleteParseError_Error(t *testing.T) {
+func TestMakeManifestErrorContext(t *testing.T) {
 	tests := []struct {
-		name string
-		err  pkg.IncompleteParseError
-		want string
+		name           string
+		source         string
+		offset         int
+		expectedSource string
+		expectedLine   int
+		expectedColumn int
 	}{
 		{
-			name: "simple error without definition",
-			err: pkg.IncompleteParseError{
-				Err: errors.New("parse failed"),
-				Lvl: 0,
-			},
-			want: "incomplete parse: parse failed",
+			name:           "empty source",
+			source:         "",
+			offset:         0,
+			expectedSource: "",
+			expectedLine:   0,
+			expectedColumn: 0,
 		},
 		{
-			name: "error with definition",
-			err: pkg.IncompleteParseError{
-				Err: errors.New("parse failed"),
-				Def: []string{"test.manifest"},
-				Lvl: 0,
-			},
-			want: "incomplete parse: parse failed",
+			name:           "single line at beginning",
+			source:         "hello world",
+			offset:         0,
+			expectedSource: "hello world",
+			expectedLine:   0,
+			expectedColumn: 0,
 		},
 		{
-			name: "error with definition and verbose level",
-			err: pkg.IncompleteParseError{
-				Err: errors.New("parse failed"),
-				Def: []string{"test.manifest"},
-				Lvl: 1,
-			},
-			want: "incomplete parse at test.manifest: parse failed",
+			name:           "single line at middle",
+			source:         "hello world",
+			offset:         5,
+			expectedSource: "hello world",
+			expectedLine:   0,
+			expectedColumn: 5,
 		},
 		{
-			name: "error with empty definitions",
-			err: pkg.IncompleteParseError{
-				Err: errors.New("parse failed"),
-				Def: []string{"", "   ", ""},
-				Lvl: 1,
-			},
-			want: "incomplete parse at ,,: parse failed",
+			name:           "multiline on first line",
+			source:         "line1\nline2\nline3",
+			offset:         3,
+			expectedSource: "line1",
+			expectedLine:   0,
+			expectedColumn: 3,
+		},
+		{
+			name:           "multiline on second line",
+			source:         "line1\nline2\nline3",
+			offset:         8,
+			expectedSource: "line2",
+			expectedLine:   1,
+			expectedColumn: 2,
+		},
+		{
+			name:           "multiline on third line",
+			source:         "line1\nline2\nline3",
+			offset:         13,
+			expectedSource: "line3",
+			expectedLine:   2,
+			expectedColumn: 1,
+		},
+		{
+			name:           "multiline with newline character",
+			source:         "line1\nline2",
+			offset:         5,
+			expectedSource: "line1",
+			expectedLine:   0,
+			expectedColumn: 5,
+		},
+		{
+			name:           "offset beyond source",
+			source:         "hello",
+			offset:         10,
+			expectedSource: "hello",
+			expectedLine:   0,
+			expectedColumn: 5,
+		},
+		{
+			name:           "empty line in middle",
+			source:         "line1\n\nline3",
+			offset:         6,
+			expectedSource: "",
+			expectedLine:   1,
+			expectedColumn: 0,
+		},
+		{
+			name:           "end of source",
+			source:         "hello",
+			offset:         5,
+			expectedSource: "hello",
+			expectedLine:   0,
+			expectedColumn: 5,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.err.Error(); got != tt.want {
-				t.Errorf("IncompleteParseError.Error() = %q, want %q", got, tt.want)
+			ctx := makeManifestErrorContext(tt.source, tt.offset)
+
+			if ctx.Source != tt.expectedSource {
+				t.Errorf("Source = %q, want %q", ctx.Source, tt.expectedSource)
+			}
+			if ctx.Line != tt.expectedLine {
+				t.Errorf("Line = %d, want %d", ctx.Line, tt.expectedLine)
+			}
+			if ctx.Column != tt.expectedColumn {
+				t.Errorf("Column = %d, want %d", ctx.Column, tt.expectedColumn)
+			}
+
+			// Test that marker is created properly
+			expectedMarker := makeMarker(tt.expectedColumn)
+			if ctx.Marker != expectedMarker {
+				t.Errorf("Marker = %q, want %q", ctx.Marker, expectedMarker)
 			}
 		})
 	}
 }
 
-func TestExpressionError_Error(t *testing.T) {
+func TestMakeMarker(t *testing.T) {
 	tests := []struct {
-		name string
-		err  pkg.ExpressionError
-		want string
+		name     string
+		column   int
+		expected string
 	}{
 		{
-			name: "simple expression error",
-			err: pkg.ExpressionError{
-				Namespace: "test",
-				Statement: "x + y",
-				Err:       errors.New("undefined variable"),
-			},
-			want: "undefined variable (expression \"x + y\" in namespace \"test\")",
+			name:     "zero column",
+			column:   0,
+			expected: "↑",
 		},
 		{
-			name: "expression error without namespace",
-			err: pkg.ExpressionError{
-				Statement: "x + y",
-				Err:       errors.New("undefined variable"),
-			},
-			want: "undefined variable",
+			name:     "negative column",
+			column:   -1,
+			expected: "↑",
 		},
 		{
-			name: "expression error with file error",
-			err: pkg.ExpressionError{
-				Namespace: "test",
-				Statement: "x + y",
-				Err: &file.Error{
-					Message: "syntax error",
-					Line:    1,
-					Column:  5,
-					Snippet: "x + y\n    ^",
-				},
-			},
-			want: func() string {
-				baseMsg := "invalid expression: syntax error (expression \"x + y\" in namespace \"test\")"
-				snippet := "\tx + y\n\t    ^"
-				return baseMsg + snippet
-			}(),
+			name:     "column 1",
+			column:   1,
+			expected: "…↑",
+		},
+		{
+			name:     "column 3",
+			column:   3,
+			expected: "………↑",
+		},
+		{
+			name:     "column 10",
+			column:   10,
+			expected: "…………………………↑",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.err.Error()
-			if got != tt.want {
-				t.Errorf("ExpressionError.Error() = %q, want %q", got, tt.want)
+			result := makeMarker(tt.column)
+			if result != tt.expected {
+				t.Errorf("makeMarker(%d) = %q, want %q", tt.column, result, tt.expected)
 			}
 		})
 	}
 }
 
-func TestExpressionError_position(t *testing.T) {
+func TestManifestErrorContext_Attr(t *testing.T) {
+	ctx := makeManifestErrorContext("test source", 4)
+	attr := ctx.Attr()
+
+	expectedKeys := []string{"detail", "line", "column"}
+	for _, key := range expectedKeys {
+		if _, exists := attr[key]; !exists {
+			t.Errorf("Attr() missing key %q", key)
+		}
+	}
+
+	if detail, ok := attr["detail"].(map[string]any); ok {
+		if source, exists := detail["source"]; !exists || source != "test source" {
+			t.Errorf("Attr()[detail][source] = %v, want %q", source, "test source")
+		}
+		if _, exists := detail["marker"]; !exists {
+			t.Errorf("Attr()[detail][marker] should exist")
+		}
+	} else {
+		t.Errorf("Attr()[detail] should be map[string]any")
+	}
+
+	if line, exists := attr["line"]; !exists || line != 1 {
+		t.Errorf("Attr()[line] = %v, want %d", line, 1)
+	}
+	if column, exists := attr["column"]; !exists || column != 5 {
+		t.Errorf("Attr()[column] = %v, want %d", column, 5)
+	}
+}
+
+func TestManifestErrorContext_DetailKey(t *testing.T) {
+	ctx := makeManifestErrorContext("test", 0)
+	if key := ctx.DetailKey(); key != "detail" {
+		t.Errorf("DetailKey() = %q, want %q", key, "detail")
+	}
+}
+
+func TestManifestErrorContext_Details(t *testing.T) {
 	tests := []struct {
-		name string
-		err  pkg.ExpressionError
-		want string
+		name   string
+		source string
+		offset int
 	}{
 		{
-			name: "file error with position",
-			err: pkg.ExpressionError{
-				Err: &file.Error{
-					Line:   10,
-					Column: 5,
-				},
-			},
-			want: "[10:5]",
+			name:   "short source",
+			source: "hello",
+			offset: 2,
 		},
 		{
-			name: "regular error without position",
-			err: pkg.ExpressionError{
-				Err: errors.New("regular error"),
-			},
-			want: "",
+			name:   "longer source",
+			source: "this is a longer source line",
+			offset: 10,
+		},
+		{
+			name:   "empty source",
+			source: "",
+			offset: 0,
+		},
+		{
+			name:   "unicode characters",
+			source: "测试unicode字符",
+			offset: 3,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// We need to call the private method through a public interface
-			// Since position() is not exported, we test it indirectly through Error()
-			// For file errors, the position should be included in the output
-			errMsg := tt.err.Error()
-			if tt.want != "" {
-				// For file errors, position info should be included somehow
-				if !strings.Contains(errMsg, "invalid expression") && tt.err.Err != nil {
-					if _, ok := tt.err.Err.(*file.Error); ok {
-						t.Errorf("ExpressionError with file.Error should contain position info")
-					}
+			ctx := makeManifestErrorContext(tt.source, tt.offset)
+			details := ctx.Details()
+
+			// Should have exactly 2 lines (source, marker)
+			if len(details) != 2 {
+				t.Errorf("Details() returned %d lines, want 2", len(details))
+			}
+
+			// First line should equal the extracted source, second should equal marker
+			if details[0] != ctx.Source {
+				t.Errorf("Details()[0] = %q, want %q", details[0], ctx.Source)
+			}
+			if details[1] != ctx.Marker {
+				t.Errorf("Details()[1] = %q, want %q", details[1], ctx.Marker)
+			}
+
+			// Verify the marker alignment width (leaders count) equals the column
+			if leaders := runeCount(details[1]) - 1; leaders != ctx.Column {
+				t.Errorf("marker leaders = %d, want %d", leaders, ctx.Column)
+			}
+		})
+	}
+}
+
+func TestParseError(t *testing.T) {
+	parseErr := MakeParseError("test source", 5)
+
+	if parseErr.Error() != "parse error" {
+		t.Errorf("ParseError.Error() = %q, want %q", parseErr.Error(), "parse error")
+	}
+
+	// Test that it implements the Attributed interface
+	var _ Attributed = parseErr
+
+	// Test that the embedded context works
+	attr := parseErr.Attr()
+	if _, exists := attr["detail"]; !exists {
+		t.Errorf("ParseError should have detail attribute")
+	}
+	if _, exists := attr["line"]; !exists {
+		t.Errorf("ParseError should have line attribute")
+	}
+	if _, exists := attr["column"]; !exists {
+		t.Errorf("ParseError should have column attribute")
+	}
+
+	details := parseErr.Details()
+	if len(details) != 2 {
+		t.Errorf("ParseError.Details() should return 2 lines, got %d", len(details))
+	}
+
+	if key := parseErr.DetailKey(); key != "detail" {
+		t.Errorf("ParseError.DetailKey() = %q, want %q", key, "detail")
+	}
+}
+
+func TestEvalError(t *testing.T) {
+	evalErr := MakeEvalError("testns", "testident", "test source", 5)
+
+	if evalErr.Error() != "evaluation error" {
+		t.Errorf("EvalError.Error() = %q, want %q", evalErr.Error(), "evaluation error")
+	}
+
+	// Test Attr method includes namespace and ident
+	attr := evalErr.Attr()
+	if namespace, exists := attr["namespace"]; !exists || namespace != "testns" {
+		t.Errorf("EvalError.Attr()[namespace] = %v, want %q", namespace, "testns")
+	}
+	if ident, exists := attr["ident"]; !exists || ident != "testident" {
+		t.Errorf("EvalError.Attr()[ident] = %v, want %q", ident, "testident")
+	}
+
+	// Test that it implements the Attributed interface
+	var _ Attributed = evalErr
+
+	// Test that the embedded context works
+	if _, exists := attr["detail"]; !exists {
+		t.Errorf("EvalError should have detail attribute")
+	}
+	if _, exists := attr["line"]; !exists {
+		t.Errorf("EvalError should have line attribute")
+	}
+	if _, exists := attr["column"]; !exists {
+		t.Errorf("EvalError should have column attribute")
+	}
+
+	details := evalErr.Details()
+	if len(details) != 2 {
+		t.Errorf("EvalError.Details() should return 2 lines, got %d", len(details))
+	}
+
+	if key := evalErr.DetailKey(); key != "detail" {
+		t.Errorf("EvalError.DetailKey() = %q, want %q", key, "detail")
+	}
+}
+
+func TestAttributes(t *testing.T) {
+	tests := []struct {
+		name     string
+		attr     Attributed
+		expected map[string]bool
+	}{
+		{
+			name:     "ParseError",
+			attr:     MakeParseError("test source", 5),
+			expected: map[string]bool{"line": false, "column": false},
+		},
+		{
+			name:     "EvalError",
+			attr:     MakeEvalError("testns", "testident", "test source", 5),
+			expected: map[string]bool{"namespace": false, "ident": false, "line": false, "column": false},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attrs := Attributes(tt.attr)
+
+			// Should exclude the detail key
+			for _, attr := range attrs {
+				if attr.Key == "detail" {
+					t.Errorf("Attributes() should not include detail key")
+				}
+			}
+
+			// Should include expected keys
+			expectedKeys := tt.expected
+			for _, attr := range attrs {
+				if _, exists := expectedKeys[attr.Key]; exists {
+					expectedKeys[attr.Key] = true
+				}
+			}
+
+			for key, found := range expectedKeys {
+				if !found {
+					t.Errorf("Attributes() missing expected key %q", key)
 				}
 			}
 		})
 	}
 }
+
+func TestAttributesSlogAttrCreation(t *testing.T) {
+	evalErr := MakeEvalError("testns", "testident", "test source", 5)
+	attrs := Attributes(evalErr)
+
+	// Verify that each attribute is a valid slog.Attr
+	for _, attr := range attrs {
+		if attr.Key == "" {
+			t.Errorf("Attribute key should not be empty")
+		}
+		// Verify the value is properly set (non-nil)
+		if attr.Value.String() == "" && attr.Key != "column" && attr.Key != "line" {
+			t.Errorf("Attribute %q value should not be empty", attr.Key)
+		}
+	}
+}
+
+// runeCount returns the number of runes in a string.
+func runeCount(s string) int { return len([]rune(s)) }

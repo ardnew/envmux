@@ -1,19 +1,17 @@
-package builtin_test
+package builtin
 
 import (
 	"testing"
-
-	"github.com/ardnew/envmux/manifest/builtin"
 )
 
 func TestCache(t *testing.T) {
-	cache := builtin.Cache()
-	
+	cache := Cache()
+
 	// Test that cache is not nil and contains expected keys
 	if cache == nil {
 		t.Fatal("Cache() should not return nil")
 	}
-	
+
 	expectedKeys := []string{"target", "platform", "hostname", "user", "shell", "cwd", "file", "path", "mung"}
 	for _, key := range expectedKeys {
 		if _, exists := cache[key]; !exists {
@@ -23,13 +21,13 @@ func TestCache(t *testing.T) {
 }
 
 func TestCacheTarget(t *testing.T) {
-	cache := builtin.Cache()
-	
+	cache := Cache()
+
 	target, ok := cache["target"]
 	if !ok {
 		t.Fatal("Cache should contain 'target' key")
 	}
-	
+
 	// The target should not be nil
 	if target == nil {
 		t.Error("target should not be nil")
@@ -37,13 +35,13 @@ func TestCacheTarget(t *testing.T) {
 }
 
 func TestCachePlatform(t *testing.T) {
-	cache := builtin.Cache()
-	
+	cache := Cache()
+
 	platform, ok := cache["platform"]
 	if !ok {
 		t.Fatal("Cache should contain 'platform' key")
 	}
-	
+
 	// The platform should not be nil
 	if platform == nil {
 		t.Error("platform should not be nil")
@@ -51,13 +49,13 @@ func TestCachePlatform(t *testing.T) {
 }
 
 func TestCacheHostname(t *testing.T) {
-	cache := builtin.Cache()
-	
+	cache := Cache()
+
 	hostname, ok := cache["hostname"]
 	if !ok {
 		t.Fatal("Cache should contain 'hostname' key")
 	}
-	
+
 	// The hostname might be empty string on some systems, but should be a string
 	if _, isString := hostname.(string); !isString {
 		t.Errorf("hostname should be string, got %T", hostname)
@@ -65,13 +63,13 @@ func TestCacheHostname(t *testing.T) {
 }
 
 func TestCacheUser(t *testing.T) {
-	cache := builtin.Cache()
-	
+	cache := Cache()
+
 	user, ok := cache["user"]
 	if !ok {
 		t.Fatal("Cache should contain 'user' key")
 	}
-	
+
 	// User might be nil on some systems, but if not nil should be *user.User
 	if user != nil {
 		// We can't easily check the type without importing os/user
@@ -83,13 +81,13 @@ func TestCacheUser(t *testing.T) {
 }
 
 func TestCacheShell(t *testing.T) {
-	cache := builtin.Cache()
-	
+	cache := Cache()
+
 	shell, ok := cache["shell"]
 	if !ok {
 		t.Fatal("Cache should contain 'shell' key")
 	}
-	
+
 	// Shell should be a string (might be empty on some systems)
 	if _, isString := shell.(string); !isString {
 		t.Errorf("shell should be string, got %T", shell)
@@ -97,13 +95,13 @@ func TestCacheShell(t *testing.T) {
 }
 
 func TestCacheCwd(t *testing.T) {
-	cache := builtin.Cache()
-	
+	cache := Cache()
+
 	cwdFunc, ok := cache["cwd"]
 	if !ok {
 		t.Fatal("Cache should contain 'cwd' key")
 	}
-	
+
 	// cwd should be a function
 	if cwdFunc == nil {
 		t.Error("cwd should not be nil")
@@ -111,18 +109,18 @@ func TestCacheCwd(t *testing.T) {
 }
 
 func TestCacheFile(t *testing.T) {
-	cache := builtin.Cache()
-	
+	cache := Cache()
+
 	file, ok := cache["file"]
 	if !ok {
 		t.Fatal("Cache should contain 'file' key")
 	}
-	
+
 	fileMap, ok := file.(map[string]any)
 	if !ok {
 		t.Fatalf("file should be map[string]any, got %T", file)
 	}
-	
+
 	expectedFileFuncs := []string{"exists", "isDir", "isRegular", "isSymlink", "perms", "stat"}
 	for _, funcName := range expectedFileFuncs {
 		if _, exists := fileMap[funcName]; !exists {
@@ -132,18 +130,18 @@ func TestCacheFile(t *testing.T) {
 }
 
 func TestCachePath(t *testing.T) {
-	cache := builtin.Cache()
-	
+	cache := Cache()
+
 	path, ok := cache["path"]
 	if !ok {
 		t.Fatal("Cache should contain 'path' key")
 	}
-	
+
 	pathMap, ok := path.(map[string]any)
 	if !ok {
 		t.Fatalf("path should be map[string]any, got %T", path)
 	}
-	
+
 	expectedPathFuncs := []string{"abs", "cat", "rel"}
 	for _, funcName := range expectedPathFuncs {
 		if _, exists := pathMap[funcName]; !exists {
@@ -153,18 +151,18 @@ func TestCachePath(t *testing.T) {
 }
 
 func TestCacheMung(t *testing.T) {
-	cache := builtin.Cache()
-	
+	cache := Cache()
+
 	mung, ok := cache["mung"]
 	if !ok {
 		t.Fatal("Cache should contain 'mung' key")
 	}
-	
+
 	mungMap, ok := mung.(map[string]any)
 	if !ok {
 		t.Fatalf("mung should be map[string]any, got %T", mung)
 	}
-	
+
 	expectedMungFuncs := []string{"prefix", "prefixif"}
 	for _, funcName := range expectedMungFuncs {
 		if _, exists := mungMap[funcName]; !exists {
@@ -175,12 +173,12 @@ func TestCacheMung(t *testing.T) {
 
 func TestCacheClone(t *testing.T) {
 	// Test that Cache() returns a clone, not the original
-	cache1 := builtin.Cache()
-	cache2 := builtin.Cache()
-	
+	cache1 := Cache()
+	cache2 := Cache()
+
 	// Modify one cache
 	cache1["test"] = "value"
-	
+
 	// The other cache should not be affected
 	if _, exists := cache2["test"]; exists {
 		t.Error("Cache() should return a clone, not the original map")
@@ -189,11 +187,11 @@ func TestCacheClone(t *testing.T) {
 
 // Test some functions indirectly through their presence in cache
 func TestFunctionTypes(t *testing.T) {
-	cache := builtin.Cache()
-	
+	cache := Cache()
+
 	// Test file functions are callable
 	fileMap := cache["file"].(map[string]any)
-	
+
 	// We can't call the functions directly due to type assertions,
 	// but we can verify they exist and are not nil
 	for name, fn := range fileMap {
@@ -201,7 +199,7 @@ func TestFunctionTypes(t *testing.T) {
 			t.Errorf("file.%s function should not be nil", name)
 		}
 	}
-	
+
 	// Test path functions
 	pathMap := cache["path"].(map[string]any)
 	for name, fn := range pathMap {
@@ -209,8 +207,8 @@ func TestFunctionTypes(t *testing.T) {
 			t.Errorf("path.%s function should not be nil", name)
 		}
 	}
-	
-	// Test mung functions  
+
+	// Test mung functions
 	mungMap := cache["mung"].(map[string]any)
 	for name, fn := range mungMap {
 		if fn == nil {

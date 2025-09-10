@@ -1,103 +1,107 @@
-package cli_test
+package cli
 
 import (
 	"context"
+	"errors"
+	"os"
 	"testing"
+
+	"github.com/ardnew/envmux/pkg/log"
 )
 
-func TestRun(t *testing.T) {
-	// Test that Run doesn't panic and returns a valid result
-	// We can't easily test the actual functionality without mocking os.Args
-	// or providing a complex test setup, so we'll test the basic structure
-	
-	// Note: Since Run uses os.Args[1:] and root.Init(), we can't easily
-	// control the inputs without significantly more test infrastructure.
-	// For now, we'll test that the function can be called and returns
-	// a result with the expected structure.
-	
-	ctx := context.Background()
-	
-	// This test is commented out because Run() uses os.Args and would
-	// try to parse actual command-line arguments, which could cause
-	// test failures depending on how the test is run.
-	
-	// To properly test this, we would need:
-	// 1. A way to mock os.Args
-	// 2. Or dependency injection for the argument source
-	// 3. Or a test-specific version of the function
-	
-	// For now, we test that the function signature is correct and can be called
-	_ = ctx // Use context to avoid unused variable warning
-	
-	t.Skip("Run() uses os.Args which cannot be easily controlled in tests")
-	
-	// The following would be the actual test if we could control the inputs:
-	// result := cli.Run(ctx)
-	// 
-	// // Verify result has expected structure
-	// if result.Code < 0 {
-	// 	t.Error("Result code should be non-negative")
-	// }
+// Test the public Run API using controllable flags so Exec doesn't run.
+func TestRun_HelpExitsZero(t *testing.T) {
+	t.Helper()
+
+	old := os.Args
+	t.Cleanup(func() { os.Args = old })
+	os.Args = []string{"envmux", "--help"}
+
+	code := Run(context.Background())
+	if code != 0 {
+		t.Fatalf("Run(--help) = %d, want 0", code)
+	}
 }
 
-func TestRunIntegration(t *testing.T) {
-	// This test demonstrates how one might test Run() in an integration
-	// test environment where command-line arguments can be controlled
-	
-	t.Skip("Integration test - requires specific test setup")
-	
-	// In a real integration test, you might:
-	// 1. Use os.Args manipulation
-	// 2. Capture stdout/stderr
-	// 3. Test specific command scenarios
-	// 4. Verify exit codes
-	
-	// Example structure:
-	// oldArgs := os.Args
-	// defer func() { os.Args = oldArgs }()
-	// 
-	// os.Args = []string{"envmux", "--help"}
-	// result := cli.Run(context.Background())
-	// 
-	// if result.Code != 0 {
-	// 	t.Errorf("Expected help to exit with code 0, got %d", result.Code)
-	// }
+func TestRun_UnknownFlagExitsNonZero(t *testing.T) {
+	t.Helper()
+
+	old := os.Args
+	t.Cleanup(func() { os.Args = old })
+	os.Args = []string{"envmux", "--definitely-not-a-flag"}
+
+	code := Run(context.Background())
+	if code == 0 {
+		t.Fatalf("Run(unknown flag) = %d, want non-zero", code)
+	}
 }
 
-func TestRunContextCancellation(t *testing.T) {
-	// Test behavior when context is cancelled
-	
-	t.Skip("Context cancellation test requires controlled environment")
-	
-	// This would test that Run respects context cancellation:
-	// ctx, cancel := context.WithCancel(context.Background())
-	// cancel() // Cancel immediately
-	// 
-	// result := cli.Run(ctx)
-	// // Verify appropriate handling of cancelled context
+// attributed implements pkg.Attributed.
+type attributed struct{ msg string }
+
+func (m attributed) Error() string      { return m.msg }
+func (attributed) Attr() map[string]any { return map[string]any{"k": "v"} }
+func (attributed) DetailKey() string    { return "details" }
+func (attributed) Details() []string    { return []string{"line1", "line2"} }
+
+func TestYield_WithAttributedError(t *testing.T) {
+	t.Helper()
+
+	j := log.MakeJotter() // use defaults to ensure leveler/handler set
+	jot := log.Make(log.WithJotter(j))
+
+	ctx, cancel := jot.AddToContextCancelCause(context.Background())
+	defer cancel(nil)
+
+	// Inject an attributed error wrapped in RunError.
+	cancel(RunError{Err: attributed{"boom"}, Code: 7})
+
+	if got := yield(ctx); got != 7 {
+		t.Fatalf("yield(ctx) = %d, want 7", got)
+	}
 }
 
-// Test helper functions and types used by Run
+func TestYield_WithHelp(t *testing.T) {
+	t.Helper()
 
-func TestRunDependencies(t *testing.T) {
-	// Test that the dependencies used by Run are available
-	
-	// Test that root.Init() works
-	t.Run("root.Init", func(t *testing.T) {
-		// Since we can't easily test root.Init() directly due to 
-		// potential side effects, we skip this test
-		t.Skip("root.Init() test requires controlled environment")
-	})
-	
-	// Test that MakeResult works (already tested in result_test.go)
-	t.Run("MakeResult", func(t *testing.T) {
-		t.Skip("MakeResult test requires valid Node implementation")
-	})
+	j := log.MakeJotter(log.WithLeveler(log.DefaultLevel), log.WithDiscard())
+	jot := log.Make(log.WithJotter(j))
+	ctx, cancel := jot.AddToContextCancelCause(context.Background())
+	defer cancel(nil)
+
+	cancel(RunError{Help: "usage"})
+
+	if got := yield(ctx); got != 0 {
+		t.Fatalf("yield(ctx) = %d, want 0", got)
+	}
 }
 
-// Helper function placeholder  
-func getRoot() interface{} {
-	// This is a placeholder that returns a dummy value
-	// In real tests, this would need to return a proper Node implementation
-	return nil
+func TestYield_WithPlainError(t *testing.T) {
+	t.Helper()
+
+	j := log.MakeJotter(log.WithLeveler(log.DefaultLevel), log.WithDiscard())
+	jot := log.Make(log.WithJotter(j))
+	ctx, cancel := jot.AddToContextCancelCause(context.Background())
+	defer cancel(nil)
+
+	cancel(RunError{Err: errors.New("plain"), Code: 3})
+
+	if got := yield(ctx); got != 3 {
+		t.Fatalf("yield(ctx) = %d, want 3", got)
+	}
+}
+
+func TestYield_NoRunError(t *testing.T) {
+	t.Helper()
+
+	j := log.MakeJotter(log.WithLeveler(log.DefaultLevel), log.WithDiscard())
+	jot := log.Make(log.WithJotter(j))
+	ctx, cancel := jot.AddToContextCancelCause(context.Background())
+	defer cancel(nil)
+
+	cancel(errors.New("not a RunError"))
+
+	if got := yield(ctx); got != -1 {
+		t.Fatalf("yield(ctx) = %d, want -1", got)
+	}
 }
