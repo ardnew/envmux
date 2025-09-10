@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"errors"
 	"log/slog"
 	"maps"
 	"strings"
@@ -8,6 +9,70 @@ import (
 
 	"github.com/ardnew/envmux/pkg/fn"
 )
+
+// Error represents a chain of errors.
+type Error struct{ err []error }
+
+// MakeError constructs an Error from non-empty messages.
+func MakeError(msgs ...string) Error {
+	return Make(WithErrorMessage(msgs...))
+}
+
+// WithError returns an option that appends non-nil errors to an Error chain.
+func WithError(errs ...error) Option[Error] {
+	return func(e Error) Error {
+		e.err = append(e.err, fn.FilterItems(errs, fn.IsNonZero)...)
+
+		return e
+	}
+}
+
+// WithErrorMessage returns an option that appends non-empty messages as errors
+// to an Error chain.
+func WithErrorMessage(msgs ...string) Option[Error] {
+	return WithError(fn.MapItems(msgs, func(m string) (error, bool) {
+		if m == "" {
+			return nil, false
+		}
+
+		return errors.New(m), true
+	})...)
+}
+
+// Wrap appends additional non-nil errors to the chain and returns a new Error.
+func (e Error) Wrap(errs ...error) Error {
+	return Wrap(e, WithError(errs...))
+}
+
+// WrapMessage appends additional non-empty messages as errors to the chain and
+// returns a new Error.
+func (e Error) WrapMessage(msgs ...string) Error {
+	return Wrap(e, WithErrorMessage(msgs...))
+}
+
+// Unwrap returns the chain of errors.
+func (e Error) Unwrap() []error {
+	return e.err
+}
+
+// Error returns the chain of error messages separated by a colon.
+func (e Error) Error() string {
+	if len(e.err) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+
+	for i, err := range fn.FilterItems(e.err, fn.IsNonZero) {
+		if i > 0 {
+			sb.WriteString(": ")
+		}
+
+		sb.WriteString(err.Error())
+	}
+
+	return sb.String()
+}
 
 // Attributed is implemented by errors that expose structured attributes for
 // logging and presentation. Implementations should return a map of key-value
@@ -22,7 +87,7 @@ type Attributed interface {
 // Attributes converts the structured fields of an [Attributed] value into a
 // slice of [slog.Attr] suitable for structured logging with [slog]. The entry
 // whose key equals [Attributed.DetailKey] is omitted, since the details are
-// expected to be logged line-by-line via [Attributed.Details].
+// expected to be handled line-by-line via [Attributed.Details].
 func Attributes(attr Attributed) []slog.Attr {
 	a := fn.FilterKeys(maps.All(attr.Attr()), func(k string) bool {
 		return k != attr.DetailKey()
@@ -36,81 +101,23 @@ func Attributes(attr Attributed) []slog.Attr {
 	return s
 }
 
-// Error represents an error with an embedded message.
-type Error struct{ string }
-
-// JoinErrors returns a new error whose message is the concatenation of the
-// non-nil input errors separated by ": ". If there are no non-nil inputs,
-// JoinErrors returns nil.
-func JoinErrors(err ...error) error {
-	if len(err) == 0 {
-		return nil
-	}
-
-	err = fn.FilterItems(err, fn.IsNonzero)
-
-	if len(err) == 0 {
-		return nil
-	}
-
-	var sb strings.Builder
-
-	sb.WriteString(err[0].Error())
-
-	for i := 1; i < len(err); i++ {
-		sb.WriteString(": ")
-		sb.WriteString(err[i].Error())
-	}
-
-	return Error{sb.String()}
-}
-
-// WithDetail returns a new error that wraps the receiver and appends any
-// non-empty detail strings to its message using [JoinErrors].
-func (e Error) WithDetail(str ...string) error {
-	set := func(msg string) (error, bool) {
-		return Error{msg}, msg != ""
-	}
-
-	return JoinErrors(append([]error{e}, fn.MapItems(str, set)...)...)
-}
-
-// Error returns the error message.
-func (e Error) Error() string {
-	if e.string == "" {
-		return "<Error>"
-	}
-
-	return e.string
-}
-
 var (
 	// ErrUndefCommandExec indicates that the command exec function is undefined.
-	ErrUndefCommandExec = Error{"undefined exec function"}
+	ErrUndefCommandExec = MakeError("undefined exec function")
 	// ErrUndefCommandFlagSet indicates that the command flag set is undefined.
-	ErrUndefCommandFlagSet = Error{"undefined flag set"}
+	ErrUndefCommandFlagSet = MakeError("undefined flag set")
 	// ErrUndefCommandUsage indicates that the command name or usage is undefined.
-	ErrUndefCommandUsage = Error{"undefined name or usage"}
+	ErrUndefCommandUsage = MakeError("undefined name or usage")
 
 	// ErrInaccessibleManifest indicates that the manifest cannot be accessed.
-	ErrInaccessibleManifest = Error{"inaccessible manifest"}
+	ErrInaccessibleManifest = MakeError("inaccessible manifest")
 	// ErrUndefinedNamespace indicates that the namespace is undefined.
-	ErrUndefinedNamespace = Error{"undefined namespace"}
-
-	// ErrIncompleteParse indicates that the parse is incomplete.
-	ErrIncompleteParse = Error{"incomplete parse"}
-	// ErrIncompleteEval indicates that the evaluation is incomplete.
-	ErrIncompleteEval = Error{"incomplete evaluation"}
-
-	// ErrUnexpectedToken indicates that an unexpected token was encountered.
-	ErrUnexpectedToken = Error{"unexpected token"}
+	ErrUndefinedNamespace = MakeError("undefined namespace")
 	// ErrInvalidIdentifier indicates that the identifier is invalid.
-	ErrInvalidIdentifier = Error{"invalid identifier"}
-	// ErrInvalidExpression indicates that an expression is invalid.
-	ErrInvalidExpression = Error{"invalid expression"}
+	ErrInvalidIdentifier = MakeError("invalid identifier")
 
 	// ErrInvalidJSON indicates that the JSON encoding is invalid.
-	ErrInvalidJSON = Error{"invalid JSON encoding"}
+	ErrInvalidJSON = MakeError("invalid JSON encoding")
 )
 
 // manifestErrorContext captures a source excerpt and position information used
@@ -221,16 +228,15 @@ type ParseError struct {
 
 // MakeParseError constructs a [ParseError] with contextual information derived
 // from source at the given byte offset.
-func MakeParseError(source string, offset int) ParseError {
-	return ParseError{
+func MakeParseError(source string, offset int) Error {
+	return Make(WithError(ParseError{
 		manifestErrorContext: makeManifestErrorContext(source, offset),
-	}
+	}))
 }
 
 // Error implements the error interface.
 func (e ParseError) Error() string {
-	// return fmt.Sprintf("parse error: %s", e.Source)
-	return "parse error"
+	return "failed to parse manifest"
 }
 
 // EvalError represents an error that occurred while evaluating an expression
@@ -244,18 +250,17 @@ type EvalError struct {
 
 // MakeEvalError constructs an [EvalError] for the specified namespace,
 // identifier, and location in the expression source.
-func MakeEvalError(namespace, ident, source string, offset int) EvalError {
-	return EvalError{
+func MakeEvalError(namespace, ident, source string, offset int) Error {
+	return Make(WithError(EvalError{
 		manifestErrorContext: makeManifestErrorContext(source, offset),
 		Namespace:            namespace,
 		Ident:                ident,
-	}
+	}))
 }
 
 // Error implements the error interface.
 func (e EvalError) Error() string {
-	// return fmt.Sprintf("evaluation error: %s", e.Source)
-	return "evaluation error"
+	return "failed to evaluate expression"
 }
 
 // Attr returns structured attributes for the evaluation error, including the

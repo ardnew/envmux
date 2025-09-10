@@ -1,147 +1,214 @@
 package pkg
 
 import (
+	"errors"
+	"log/slog"
+	"reflect"
 	"testing"
+	"unicode/utf8"
 )
 
-func TestError_Error(t *testing.T) {
-	tests := []struct {
-		name     string
-		err      Error
-		expected string
-	}{
-		{
-			name:     "empty error",
-			err:      Error{},
-			expected: "<Error>",
-		},
-		{
-			name:     "error with message",
-			err:      Error{"test error"},
-			expected: "test error",
-		},
+// unwrap helpers for attributed error types stored inside Error chains
+func unwrapParse(e Error) ParseError { return e.Unwrap()[0].(ParseError) }
+func unwrapEval(e Error) EvalError   { return e.Unwrap()[0].(EvalError) }
+
+// helper standard library errors to wrap
+var (
+	errStdA = errors.New("std A")
+	errStdB = errors.New("std B")
+)
+
+func TestMakeErrorAndErrorString(t *testing.T) {
+	if MakeError().Error() != "" { // empty chain -> empty string
+		t.Fatalf("expected empty string for empty error chain")
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.err.Error(); got != tt.expected {
-				t.Errorf("Error.Error() = %v, want %v", got, tt.expected)
-			}
-		})
+	e := MakeError("alpha", "", "beta") // skips empty
+	if got, want := e.Error(), "alpha: beta"; got != want {
+		t.Fatalf("unexpected error string: got %q want %q", got, want)
 	}
 }
 
-func TestError_WithDetail(t *testing.T) {
-	tests := []struct {
-		name     string
-		err      Error
-		details  []string
-		expected string
-	}{
-		{
-			name:     "no details",
-			err:      Error{"base error"},
-			details:  []string{},
-			expected: "base error",
-		},
-		{
-			name:     "empty detail",
-			err:      Error{"base error"},
-			details:  []string{""},
-			expected: "base error",
-		},
-		{
-			name:     "single detail",
-			err:      Error{"base error"},
-			details:  []string{"detail"},
-			expected: "base error: detail",
-		},
-		{
-			name:     "multiple details",
-			err:      Error{"base error"},
-			details:  []string{"detail1", "detail2"},
-			expected: "base error: detail1: detail2",
-		},
-		{
-			name:     "mixed empty and nonempty details",
-			err:      Error{"base error"},
-			details:  []string{"", "detail1", "", "detail2"},
-			expected: "base error: detail1: detail2",
-		},
-		{
-			name:     "empty base error with details",
-			err:      Error{""},
-			details:  []string{"detail1", "detail2"},
-			expected: "<Error>: detail1: detail2",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.err.WithDetail(tt.details...)
-			if result.Error() != tt.expected {
-				t.Errorf("Error.WithDetail() = %v, want %v", result.Error(), tt.expected)
-			}
-		})
+func TestWithErrorAndWithErrorMessage(t *testing.T) {
+	base := Make(WithErrorMessage("one"))
+	base = base.WrapMessage("two", "")         // ignore empty
+	base = base.Wrap(errors.New("three"), nil) // ignore nil
+	base = base.WrapMessage()                  // no-op
+	if got, want := base.Error(), "one: two: three"; got != want {
+		t.Fatalf("Wrap / WrapMessage mismatch: got %q want %q", got, want)
 	}
 }
 
-func TestJoinErrors(t *testing.T) {
-	tests := []struct {
-		name     string
-		errors   []error
-		expected string
-		isNil    bool
-	}{
-		{
-			name:   "no errors",
-			errors: []error{},
-			isNil:  true,
-		},
-		{
-			name:   "only nil errors",
-			errors: []error{nil, nil},
-			isNil:  true,
-		},
-		{
-			name:     "single error",
-			errors:   []error{Error{"error1"}},
-			expected: "error1",
-		},
-		{
-			name:     "multiple errors",
-			errors:   []error{Error{"error1"}, Error{"error2"}},
-			expected: "error1: error2",
-		},
-		{
-			name:     "mixed nil and nonnil errors",
-			errors:   []error{nil, Error{"error1"}, nil, Error{"error2"}},
-			expected: "error1: error2",
-		},
-		{
-			name:     "three errors",
-			errors:   []error{Error{"error1"}, Error{"error2"}, Error{"error3"}},
-			expected: "error1: error2: error3",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := JoinErrors(tt.errors...)
-			if tt.isNil {
-				if result != nil {
-					t.Errorf("JoinErrors() = %v, want nil", result)
-				}
-			} else {
-				if result == nil {
-					t.Errorf("JoinErrors() = nil, want %v", tt.expected)
-				} else if result.Error() != tt.expected {
-					t.Errorf("JoinErrors() = %v, want %v", result.Error(), tt.expected)
-				}
-			}
-		})
+func TestUnwrap(t *testing.T) {
+	e := MakeError("x", "y")
+	u := e.Unwrap()
+	if len(u) != 2 || u[0].Error() != "x" || u[1].Error() != "y" {
+		t.Fatalf("unexpected unwrap contents: %#v", u)
 	}
 }
+
+func TestAttributesExcludesDetail(t *testing.T) {
+	pe := unwrapParse(MakeParseError("line1", 0))
+	attrs := Attributes(pe)
+	foundDetail := false
+	for _, a := range attrs {
+		if a.Key == pe.DetailKey() { // should not appear
+			foundDetail = true
+		}
+	}
+	if foundDetail {
+		t.Fatalf("detail key should be excluded from slog attrs")
+	}
+
+	// ensure returned attrs are usable with slog (non-zero length value string ok)
+	for _, a := range attrs {
+		_ = slog.Any(a.Key, a.Value.Any())
+	}
+}
+
+func TestManifestErrorContextExtractionAndMarker(t *testing.T) {
+	source := "first\nsecond\nthird"           // offsets: second line starts at 6
+	ctx := makeManifestErrorContext(source, 8) // points into second line
+	if ctx.Line != 1 || ctx.Column != 2 || ctx.Source != "second" {
+		t.Fatalf("unexpected context: %+v", ctx)
+	}
+	if leaders := runeCount(ctx.Marker) - 1; leaders != ctx.Column { // column is zero based
+		t.Fatalf("marker alignment mismatch: leaders=%d col=%d marker=%q", leaders, ctx.Column, ctx.Marker)
+	}
+	// offset past end
+	ctx2 := makeManifestErrorContext("abc", 10)
+	if ctx2.Source != "abc" || ctx2.Line != 0 || ctx2.Column != 3 {
+		t.Fatalf("unexpected past-end context: %+v", ctx2)
+	}
+}
+
+func TestManifestErrorContextEmptyLine(t *testing.T) {
+	source := "line1\n\nline3"
+	ctx := makeManifestErrorContext(source, 6) // points at empty second line
+	if ctx.Line != 1 || ctx.Column != 0 || ctx.Source != "" {
+		t.Fatalf("unexpected empty line context: %+v", ctx)
+	}
+}
+
+func TestMakeMarker(t *testing.T) {
+	cols := []int{-5, 0, 1, 3, 7}
+	for _, col := range cols {
+		m := makeMarker(col)
+		r, _ := utf8.DecodeLastRuneInString(m)
+		if r != '↑' {
+			t.Fatalf("last rune must be arrow col=%d m=%q", col, m)
+		}
+		if col < 0 {
+			if m != "↑" {
+				t.Fatalf("negative col should yield base marker got=%q", m)
+			}
+			continue
+		}
+		if leaders := runeCount(m) - 1; leaders != col {
+			t.Fatalf("leaders=%d want=%d marker=%q", leaders, col, m)
+		}
+	}
+}
+
+func TestParseErrorImplementsAttributed(t *testing.T) {
+	perr := unwrapParse(MakeParseError("foo", 0))
+	var a Attributed = perr
+	if a.DetailKey() != "detail" {
+		t.Fatalf("unexpected detail key")
+	}
+	if len(a.Details()) != 2 {
+		t.Fatalf("expected 2 detail lines")
+	}
+	m := a.Attr()
+	for _, key := range []string{"detail", "line", "column"} {
+		if _, ok := m[key]; !ok {
+			t.Fatalf("missing attr key %q", key)
+		}
+	}
+	if perr.Error() != "failed to parse manifest" {
+		t.Fatalf("unexpected parse error string: %q", perr.Error())
+	}
+}
+
+func TestEvalErrorAttributes(t *testing.T) {
+	eerrWrapped := MakeEvalError("ns", "id", "foo\nbar", 5) // into second line
+	eerr := unwrapEval(eerrWrapped)
+	attrs := eerr.Attr()
+	wantKeys := []string{"detail", "line", "column", "namespace", "ident"}
+	for _, k := range wantKeys {
+		if _, ok := attrs[k]; !ok {
+			t.Fatalf("missing attr %q", k)
+		}
+	}
+	if eerrWrapped.Error() != "failed to evaluate expression" {
+		t.Fatalf("unexpected eval error string: %q", eerrWrapped.Error())
+	}
+	// ensure underlying context used
+	if eerr.Line != 1 {
+		t.Fatalf("expected line=1 got %d", eerr.Line)
+	}
+}
+
+func TestPredeclaredSentinelErrors(t *testing.T) {
+	// Verify non-empty messages
+	set := map[string]string{}
+	pairs := []struct {
+		name string
+		e    Error
+	}{
+		{"ErrUndefCommandExec", ErrUndefCommandExec},
+		{"ErrUndefCommandFlagSet", ErrUndefCommandFlagSet},
+		{"ErrUndefCommandUsage", ErrUndefCommandUsage},
+		{"ErrInaccessibleManifest", ErrInaccessibleManifest},
+		{"ErrUndefinedNamespace", ErrUndefinedNamespace},
+		{"ErrInvalidIdentifier", ErrInvalidIdentifier},
+		{"ErrInvalidJSON", ErrInvalidJSON},
+	}
+	for _, p := range pairs {
+		if p.e.Error() == "" {
+			t.Fatalf("%s has empty message", p.name)
+		}
+		set[p.name] = p.e.Error()
+	}
+	if len(set) != len(pairs) {
+		t.Fatalf("expected %d sentinel messages, got %d", len(pairs), len(set))
+	}
+}
+
+func TestWrapChainingOrder(t *testing.T) {
+	chain := MakeError("a").WrapMessage("b").Wrap(errStdA).WrapMessage("c").Wrap(errStdB)
+	if got, want := chain.Error(), "a: b: std A: c: std B"; got != want {
+		t.Fatalf("unexpected chain order got=%q want=%q", got, want)
+	}
+	// verify unwrap preserves chronological order
+	u := chain.Unwrap()
+	gotSeq := make([]string, 0, len(u))
+	for _, e := range u {
+		gotSeq = append(gotSeq, e.Error())
+	}
+	wantSeq := []string{"a", "b", "std A", "c", "std B"}
+	if !reflect.DeepEqual(gotSeq, wantSeq) {
+		t.Fatalf("unwrap order mismatch got=%v want=%v", gotSeq, wantSeq)
+	}
+}
+
+func TestAttributesHelperDeterministicKeys(t *testing.T) {
+	eerr := unwrapEval(MakeEvalError("n", "x", "abc", 1))
+	attrs := Attributes(eerr)
+	// convert slice to map for quick presence check
+	m := map[string]bool{}
+	for _, a := range attrs {
+		m[a.Key] = true
+	}
+	for _, want := range []string{"namespace", "ident", "line", "column"} {
+		if !m[want] {
+			t.Fatalf("missing slog attr %q", want)
+		}
+	}
+}
+
+// runeCount returns the number of runes in a string (copied from previous tests for marker alignment validation).
+func runeCount(s string) int { return len([]rune(s)) }
 
 func TestPredefinedErrors(t *testing.T) {
 	tests := []struct {
@@ -153,11 +220,7 @@ func TestPredefinedErrors(t *testing.T) {
 		{"ErrUndefCommandUsage", ErrUndefCommandUsage},
 		{"ErrInaccessibleManifest", ErrInaccessibleManifest},
 		{"ErrUndefinedNamespace", ErrUndefinedNamespace},
-		{"ErrIncompleteParse", ErrIncompleteParse},
-		{"ErrIncompleteEval", ErrIncompleteEval},
-		{"ErrUnexpectedToken", ErrUnexpectedToken},
 		{"ErrInvalidIdentifier", ErrInvalidIdentifier},
-		{"ErrInvalidExpression", ErrInvalidExpression},
 		{"ErrInvalidJSON", ErrInvalidJSON},
 	}
 
@@ -287,48 +350,7 @@ func TestMakeManifestErrorContext(t *testing.T) {
 	}
 }
 
-func TestMakeMarker(t *testing.T) {
-	tests := []struct {
-		name     string
-		column   int
-		expected string
-	}{
-		{
-			name:     "zero column",
-			column:   0,
-			expected: "↑",
-		},
-		{
-			name:     "negative column",
-			column:   -1,
-			expected: "↑",
-		},
-		{
-			name:     "column 1",
-			column:   1,
-			expected: "…↑",
-		},
-		{
-			name:     "column 3",
-			column:   3,
-			expected: "………↑",
-		},
-		{
-			name:     "column 10",
-			column:   10,
-			expected: "…………………………↑",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := makeMarker(tt.column)
-			if result != tt.expected {
-				t.Errorf("makeMarker(%d) = %q, want %q", tt.column, result, tt.expected)
-			}
-		})
-	}
-}
+// (Removed duplicate TestMakeMarker variant)
 
 func TestManifestErrorContext_Attr(t *testing.T) {
 	ctx := makeManifestErrorContext("test source", 4)
@@ -422,16 +444,12 @@ func TestManifestErrorContext_Details(t *testing.T) {
 }
 
 func TestParseError(t *testing.T) {
-	parseErr := MakeParseError("test source", 5)
-
-	if parseErr.Error() != "parse error" {
-		t.Errorf("ParseError.Error() = %q, want %q", parseErr.Error(), "parse error")
+	w := MakeParseError("test source", 5)
+	if w.Error() != "failed to parse manifest" {
+		t.Errorf("ParseError.Error() = %q, want %q", w.Error(), "failed to parse manifest")
 	}
-
-	// Test that it implements the Attributed interface
+	parseErr := unwrapParse(w)
 	var _ Attributed = parseErr
-
-	// Test that the embedded context works
 	attr := parseErr.Attr()
 	if _, exists := attr["detail"]; !exists {
 		t.Errorf("ParseError should have detail attribute")
@@ -454,13 +472,11 @@ func TestParseError(t *testing.T) {
 }
 
 func TestEvalError(t *testing.T) {
-	evalErr := MakeEvalError("testns", "testident", "test source", 5)
-
-	if evalErr.Error() != "evaluation error" {
-		t.Errorf("EvalError.Error() = %q, want %q", evalErr.Error(), "evaluation error")
+	w := MakeEvalError("testns", "testident", "test source", 5)
+	if w.Error() != "failed to evaluate expression" {
+		t.Errorf("EvalError.Error() = %q, want %q", w.Error(), "failed to evaluate expression")
 	}
-
-	// Test Attr method includes namespace and ident
+	evalErr := unwrapEval(w)
 	attr := evalErr.Attr()
 	if namespace, exists := attr["namespace"]; !exists || namespace != "testns" {
 		t.Errorf("EvalError.Attr()[namespace] = %v, want %q", namespace, "testns")
@@ -501,12 +517,12 @@ func TestAttributes(t *testing.T) {
 	}{
 		{
 			name:     "ParseError",
-			attr:     MakeParseError("test source", 5),
+			attr:     unwrapParse(MakeParseError("test source", 5)),
 			expected: map[string]bool{"line": false, "column": false},
 		},
 		{
 			name:     "EvalError",
-			attr:     MakeEvalError("testns", "testident", "test source", 5),
+			attr:     unwrapEval(MakeEvalError("testns", "testident", "test source", 5)),
 			expected: map[string]bool{"namespace": false, "ident": false, "line": false, "column": false},
 		},
 	}
@@ -540,7 +556,7 @@ func TestAttributes(t *testing.T) {
 }
 
 func TestAttributesSlogAttrCreation(t *testing.T) {
-	evalErr := MakeEvalError("testns", "testident", "test source", 5)
+	evalErr := unwrapEval(MakeEvalError("testns", "testident", "test source", 5))
 	attrs := Attributes(evalErr)
 
 	// Verify that each attribute is a valid slog.Attr
@@ -555,5 +571,4 @@ func TestAttributesSlogAttrCreation(t *testing.T) {
 	}
 }
 
-// runeCount returns the number of runes in a string.
-func runeCount(s string) int { return len([]rune(s)) }
+// (removed duplicate runeCount)

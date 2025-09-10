@@ -36,7 +36,16 @@ const (
 //nolint:gochecknoglobals,exhaustruct
 var (
 	versionFlag = ff.FlagConfig{
-		// ShortName:     'V',
+		// ShortName is omitted to avoid conflict with -v/--version.
+		//
+		// With the current behavior of [ff], the only way to support "-V" would
+		// require all flags to be case-sensitive at all times, including config
+		// and env files.
+		//
+		// But using env variables with mixed case (e.g., "ENVMUX_v[erbose]=1")
+		// is not portable, idiomatic, or appealing.
+		//
+		// For now, you must use the long name "--version" for version info.
 		LongName:      `version`,
 		Usage:         `show semantic version`,
 		NoPlaceholder: true,
@@ -230,7 +239,7 @@ func (r Node) Init(...any) cmd.Node { //nolint:ireturn
 					manifest.WithStrictDefinitions(r.StrictDefinitions),
 				)
 				if err != nil {
-					return pkg.JoinErrors(pkg.ErrInaccessibleManifest, err)
+					return pkg.ErrInaccessibleManifest.Wrap(err)
 				}
 
 				man, err = man.Parse()

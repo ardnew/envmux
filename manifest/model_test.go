@@ -378,7 +378,7 @@ func TestEvalNamespaceStatements_Errors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	if _, err := m.Eval(ctx, "bad"); err == nil || !strings.Contains(err.Error(), "evaluation error") {
+	if _, err := m.Eval(ctx, "bad"); err == nil || !strings.Contains(err.Error(), "failed to evaluate expression") {
 		t.Fatalf("expected eval compile error, got %v", err)
 	}
 

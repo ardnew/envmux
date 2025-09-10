@@ -131,19 +131,19 @@ func TestIsZero(t *testing.T) {
 
 func TestIsNonzero(t *testing.T) {
 	t.Run("int", func(t *testing.T) {
-		if IsNonzero(0) {
+		if IsNonZero(0) {
 			t.Error("IsNonzero(0) should be false")
 		}
-		if !IsNonzero(1) {
+		if !IsNonZero(1) {
 			t.Error("IsNonzero(1) should be true")
 		}
 	})
 
 	t.Run("string", func(t *testing.T) {
-		if IsNonzero("") {
+		if IsNonZero("") {
 			t.Error("IsNonzero(\"\") should be false")
 		}
-		if !IsNonzero("test") {
+		if !IsNonZero("test") {
 			t.Error("IsNonzero(\"test\") should be true")
 		}
 	})

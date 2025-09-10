@@ -75,7 +75,7 @@ func export(sub ...parameterEnv) pkg.Option[parameterEnv] {
 func (m Model) String() string {
 	e, err := json.Marshal(m)
 	if err == nil {
-		return pkg.JoinErrors(pkg.ErrInvalidJSON, err).Error()
+		return pkg.ErrInvalidJSON.Wrap(err).Error()
 	}
 
 	return string(e)
@@ -91,7 +91,7 @@ func (m Model) IsZero() bool { return m.AST == nil }
 func (m Model) Parse() (Model, error) {
 	ast := parse.New()
 	if _, err := ast.ReadFrom(m.ManifestReader); err != nil { //nolint:noinlineerr
-		return Model{}, err
+		return Model{}, pkg.ErrInaccessibleManifest.Wrap(err)
 	}
 
 	return pkg.Wrap(m, WithAST(ast)), nil
@@ -187,7 +187,7 @@ func (m Model) evalComposition(
 	// Verify that the namespace exists in the model.
 	if idx < 0 {
 		if m.StrictDefinitions {
-			return parameterEnv{}, pkg.ErrUndefinedNamespace.WithDetail(
+			return parameterEnv{}, pkg.ErrUndefinedNamespace.WrapMessage(
 				composite.Ident,
 			)
 		}

@@ -26,8 +26,8 @@ func IsZero[T comparable](v T) bool {
 	return IsEqual(v, t)
 }
 
-// IsNonzero is a convenience predicate for non-zero values.
-func IsNonzero[T comparable](v T) bool {
+// IsNonZero is a convenience predicate for non-zero values.
+func IsNonZero[T comparable](v T) bool {
 	var t T
 
 	return IsUnequal(v, t)
