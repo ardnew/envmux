@@ -115,7 +115,7 @@ NumLiteral <- SIGN_SYMBOL? ( FltLiteral / IntLiteral )
 
 # -- STRINGS --
 
-OctEscape <- '\\0' ( OCT_HIBITS OCT_DIGIT OCT_DIGIT / OCT_DIGIT OCT_DIGIT? )
+OctEscape <- '\\0' ( OCT_HIGIT OCT_DIGIT OCT_DIGIT / OCT_DIGIT OCT_DIGIT? )
 HexEscape <- '\\' HEX_SIGIL HEX_DIGIT HEX_DIGIT?
 SeqEscape <- '\\' [abefnrtv"\\] / OctEscape / HexEscape
 
@@ -153,13 +153,13 @@ SIGN_SYMBOL <- [+\-]
 DEC_NONZERO <- [1-9]
 DEC_DIGIT   <- [0-9]
 BIN_DIGIT   <- [01]
-OCT_HIBITS  <- [0-3]
+OCT_HIGIT   <- [0-3]
 OCT_DIGIT   <- [0-7]
 HEX_DIGIT   <- [[0-9a-f]]
 
-BIN_SIGIL   <- 'b'
-OCT_SIGIL   <- 'o'
-HEX_SIGIL   <- 'x'
+BIN_SIGIL   <- 'b' # |
+OCT_SIGIL   <- 'o' # |- case-sensitive
+HEX_SIGIL   <- 'x' # |
 
 EXP_SIGIL   <- "e" # case-insensitive
 

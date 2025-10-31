@@ -159,8 +159,7 @@ func TestPredefinedErrors(t *testing.T) {
 	// We can't directly test cmd package errors here since they may not
 	// be exported, so we test that the types can be used
 
-	var err error
-	err = context.Canceled // Use a standard error for testing
+	err := context.Canceled // Use a standard error for testing
 	if err == nil {
 		t.Error("Error should not be nil")
 	}

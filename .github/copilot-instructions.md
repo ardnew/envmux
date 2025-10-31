@@ -9,12 +9,106 @@ in a custom domain-specific language (DSL).
 The source code is organized into several packages described below.
 The descriptions apply to the named package itself and its sub-packages.
 
-- [cmd/envmux](/cmd/envmux): Contains the command-line interface (CLI) implementation.
-- [manifest](/manifest): Handles configuration parsing and management.
-  - Expressions are evaluated using a separate DSL provided by [**_expr-lang/expr_**](https://github.com/expr-lang/expr).
-  - This package is responsible for evaluating expressions used to define variables.
-- [manifest/builtin](/manifest/builtin): Defines the variables and built-in functions available for use in the manifest.
-- [manifest/parse](/manifest/parse): Defines the lexer and parser for the DSL and produces the AST.
-  - The lexer and parser are based on [**_pointlander/peg_**](https://github.com/pointlander/peg).
-- [manifest/parse/internal/grammar.peg](/manifest/parse/internal/grammar.peg): Defines the grammar for the DSL using PEG syntax.
-- [pkg](/pkg): Provides shared utilities and data structures used across the application.
+### Core Packages
+
+#### `pkg/`
+Foundation utilities and abstractions used throughout the project:
+- **Functional Options Pattern**: Generic `Option[T]` type for composable configuration
+- **Error Handling**: Structured error chains with `Error` type supporting wrapping and unwrapping
+- **Logging**: Structured logging built on `slog` with context-aware `Journal` and configurable `Jotter`
+- **Identity**: Project metadata including name, version, and author information
+- **Functional Utilities** (`pkg/fn/`): Generic helpers for sequences, slices, maps, and sets including `Map`, `Filter`, and set operations
+
+#### `manifest/`
+Core domain model for parsing, evaluating, and managing environment namespaces:
+- **Model**: Main evaluation engine (`Model`) that orchestrates namespace composition and parallel expression evaluation
+- **Namespace Evaluation**: Supports parametric namespaces, composition hierarchies, and expression-based variable assignments
+- **Expression Compilation**: Uses `expr-lang/expr` for safe expression evaluation with type inference
+- **AST Patching**: Dynamic parameter substitution via expression AST transformation (`patch.go`)
+
+##### `manifest/parse/`
+PEG-based parser for the manifest grammar:
+- **Grammar**: Defined in `internal/grammar.peg` and compiled to Go using `pointlander/peg`
+- **AST**: In-memory representation with `Namespace`, `Composite`, `Parameter`, `Statement`, and `Expression` nodes
+- **Parser**: Generated parser (`parser.go`) implements streaming reads with configurable buffering
+- **Pretty Printing**: Configurable formatting for AST debugging and inspection
+
+##### `manifest/config/`
+Default paths and configuration resolution:
+- **Directory Resolution**: Locates config/cache directories following XDG Base Directory specification
+- **Manifest Paths**: Default manifest locations and stdin handling
+- **Path Normalization**: Handles executable name variations (debuggers, test binaries, dot-prefixed names)
+
+##### `manifest/builtin/`
+Built-in environment variables and functions available in expressions:
+- **System Variables**: Host information (hostname, user, shell, platform)
+- **Runtime Variables** (`builtin/runtime/`): Target OS and architecture in various naming conventions
+- **File Operations**: Functions for file existence checks, type detection, and path manipulation
+- **Evaluation Environment**: Lazy-initialized singleton cache with const coercion for type safety
+
+### Command-Line Interface
+
+#### `cmd/envmux/`
+Main entry point and CLI wiring:
+- **Entry Point** (`main.go`): Minimal bootstrap that delegates to `cli.Run`
+- **Profiling Support** (`pprof/`): Optional runtime profiling integration (enabled with build tag `pprof`)
+
+##### `cmd/envmux/cli/`
+CLI execution flow and result handling:
+- **Run Loop**: Context-based execution with structured error handling
+- **Result Types**: `RunError` with exit codes, help text, and error attribution
+- **Logging Integration**: Wires `Journal` into context for consistent structured logging
+
+###### `cmd/envmux/cli/cmd/`
+Command framework and abstractions:
+- **Node Interface**: Abstraction over `ff.Command` and `ff.FlagSet` for composable command trees
+- **Configuration**: `Config` bundles commands with flags and provides validation
+- **Options**: Functional options for adding usage, flags, and subcommands to nodes
+
+###### `cmd/envmux/cli/cmd/root/`
+Root command implementation:
+- **Flag Definitions**: Version, verbosity, parallelism, manifest paths, inline definitions, profiling
+- **Execution**: Parses manifests, evaluates namespaces, and outputs environment variables
+- **Subcommands**: Hosts `fs/` (file system operations) and `ns/` (namespace operations) subcommands
+
+###### `cmd/envmux/cli/shell/`
+Shell-specific formatting and identifier normalization:
+- **Identifier Casing**: Handles uppercase/lowercase/preserve modes
+- **Shell Compatibility**: Ensures generated identifiers are valid for target shells
+
+### Documentation
+
+#### `docs/`
+Embedded reference documentation:
+- **Grammar Documentation** (`manifest.go`): Describes manifest syntax, namespaces, composition, parameters, and expression evaluation
+
+### Build and Code Generation
+
+- **Parser Generation**: Task `generate: parser` runs `go generate` on `manifest/parse/grammar.go` to compile PEG grammar
+- **Grammar Source**: `manifest/parse/internal/grammar.peg` defines the manifest DSL syntax
+- **Generated Code**: `manifest/parse/parser.go` (DO NOT EDIT - generated by peg)
+
+## Architecture Patterns
+
+### Functional Options
+Most configuration types use the `pkg.Option[T]` pattern for composable, type-safe initialization.
+
+### Context-Aware Logging
+`Journal` is embedded in `context.Context` throughout execution, enabling consistent structured logging with shared attributes.
+
+### Parallel Evaluation
+Namespace evaluation uses `flowmatic` for bounded-parallelism map operations, respecting `MaxParallelJobs` limits.
+
+### Error Attribution
+Errors implement `pkg.Attributed` to carry structured fields for logging and can provide detailed multi-line output.
+
+### Lazy Initialization
+Built-in environment variables are initialized once via `sync.Once` and cloned for each evaluation to prevent mutation.
+
+## Key Dependencies
+
+- **`peterbourgon/ff/v4`**: Command-line flag parsing with config file support
+- **`expr-lang/expr`**: Safe expression language for variable evaluation
+- **`carlmjohnson/flowmatic`**: Bounded-parallelism primitives for concurrent evaluation
+- **`pkg/profile`**: Optional runtime profiling (CPU, memory, goroutines, etc.)
+- **`ardnew/mung`**: String manipulation utilities available in expressions

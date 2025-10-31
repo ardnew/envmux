@@ -89,11 +89,9 @@ func TestModes(t *testing.T) {
 	_ = modes // Just verify it doesn't panic
 
 	// If modes is not nil, verify it contains strings
-	if modes != nil {
-		for i, mode := range modes {
-			if mode == "" {
-				t.Errorf("Mode at index %d should not be empty", i)
-			}
+	for i, mode := range modes {
+		if mode == "" {
+			t.Errorf("Mode at index %d should not be empty", i)
 		}
 	}
 }

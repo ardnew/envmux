@@ -106,6 +106,6 @@ func mungPrefixIf(
 		mung.WithSubjectItems(key),
 		mung.WithDelim(string(os.PathListSeparator)),
 		mung.WithPrefixItems(prefix...),
-		mung.WithPredicate(predicate),
+		mung.WithFilter(predicate),
 	).String()
 }

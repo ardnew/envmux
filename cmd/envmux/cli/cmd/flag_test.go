@@ -124,7 +124,7 @@ func TestFlagOptionsFunction(t *testing.T) {
 	}()
 
 	// Test function type
-	var fn func() []ff.Option = FlagOptions
+	fn := FlagOptions
 	if fn == nil {
 		t.Error("FlagOptions should be assignable to func() []ff.Option")
 	}

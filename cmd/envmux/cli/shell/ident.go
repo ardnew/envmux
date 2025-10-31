@@ -29,13 +29,12 @@ var DefaultIdentFormat = IdentFormat{
 }
 
 // MakeIdent formats words as a single variable identifier using
-// [DefaultIdentFormat] by default. Assign a different function to override
+// [DefaultIdentFormat] by default.
+// Assign a different function or reconfigure [DefaultIdentFormat] to override
 // formatting globally.
 //
 //nolint:gochecknoglobals
-var MakeIdent = func(words ...string) string {
-	return DefaultIdentFormat.makeIdent(words...)
-}
+var MakeIdent = DefaultIdentFormat.makeIdent
 
 // MakeIdent formats the given words as a single variable identifier
 // according to the receiver's formatting options.
