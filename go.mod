@@ -8,7 +8,7 @@ require (
 	github.com/expr-lang/expr v1.17.6
 	github.com/peterbourgon/ff/v4 v4.0.0-beta.1
 	github.com/pkg/profile v1.7.0
-	golang.org/x/text v0.30.0
+	golang.org/x/text v0.31.0
 )
 
 require (
