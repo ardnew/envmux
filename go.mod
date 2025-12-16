@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/ardnew/mung v0.4.0
 	github.com/carlmjohnson/flowmatic v0.23.4
-	github.com/expr-lang/expr v1.17.6
+	github.com/expr-lang/expr v1.17.7
 	github.com/peterbourgon/ff/v4 v4.0.0-beta.1
 	github.com/pkg/profile v1.7.0
 	golang.org/x/text v0.31.0
